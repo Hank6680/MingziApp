@@ -19,6 +19,7 @@ export interface Product {
   warehouseType: string
   price: number
   isAvailable: number
+  stock?: number
 }
 
 export interface OrderItem {

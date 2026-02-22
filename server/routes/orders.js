@@ -29,6 +29,14 @@ const dbAll = (sql, params = []) =>
     })
   )
 
+const dbGet = (sql, params = []) =>
+  new Promise((resolve, reject) =>
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err)
+      else resolve(row)
+    })
+  )
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 const fetchItemsForOrder = (orderId) =>
@@ -327,21 +335,78 @@ router.patch("/:id/status", requireAdmin, async (req, res, next) => {
     return next(httpError(400, "Invalid order status", "VALIDATION_ERROR"))
   }
 
-  db.run("UPDATE orders SET status = ? WHERE id = ?", [status, orderId], async function (err) {
-    if (err) {
-      return next(err)
-    }
-    if (this.changes === 0) {
+  const requiresStockDeduction = status === "shipped" || status === "completed"
+
+  try {
+    await dbRun("BEGIN IMMEDIATE")
+
+    const orderRow = await dbGet("SELECT * FROM orders WHERE id = ?", [orderId])
+    if (!orderRow) {
+      await dbRun("ROLLBACK")
       return next(httpError(404, "Order not found", "NOT_FOUND"))
     }
 
-    try {
+    if (requiresStockDeduction && orderRow.stockDeducted) {
+      await dbRun("UPDATE orders SET status = ? WHERE id = ?", [status, orderId])
+      await dbRun("COMMIT")
       const order = await fetchOrderWithItems(orderId)
       return res.json(order)
-    } catch (fetchErr) {
-      return next(fetchErr)
     }
-  })
+
+    if (requiresStockDeduction) {
+      const items = await dbAll(
+        `SELECT oi.id, oi.productId, oi.qtyPicked, p.stock, p.name
+         FROM order_items oi
+         JOIN products p ON p.id = oi.productId
+         WHERE oi.orderId = ?`,
+        [orderId]
+      )
+
+      const insufficient = []
+      for (const item of items) {
+        const qty = Number(item.qtyPicked) || 0
+        if (qty > 0 && item.stock < qty) {
+          insufficient.push({ productId: item.productId, name: item.name, stock: item.stock, required: qty })
+        }
+      }
+
+      if (insufficient.length) {
+        await dbRun("ROLLBACK")
+        return next(
+          httpError(
+            400,
+            `库存不足：${insufficient
+              .map((i) => `${i.name ?? i.productId} (现有 ${i.stock}, 需要 ${i.required})`)
+              .join(", ")}`,
+            "STOCK_INSUFFICIENT"
+          )
+        )
+      }
+
+      const nowIso = new Date().toISOString()
+      for (const item of items) {
+        const qty = Number(item.qtyPicked) || 0
+        if (qty <= 0) continue
+        await dbRun("UPDATE products SET stock = stock - ? WHERE id = ?", [qty, item.productId])
+        await dbRun(
+          `INSERT INTO inventory_logs (productId, type, quantity, logDate, remark)
+           VALUES (?, 'out', ?, ?, ?)`,
+          [item.productId, qty, nowIso, `Order #${orderId} - ${status}`]
+        )
+      }
+
+      await dbRun("UPDATE orders SET stockDeducted = 1 WHERE id = ?", [orderId])
+    }
+
+    await dbRun("UPDATE orders SET status = ? WHERE id = ?", [status, orderId])
+    await dbRun("COMMIT")
+
+    const order = await fetchOrderWithItems(orderId)
+    return res.json(order)
+  } catch (err) {
+    await dbRun("ROLLBACK").catch(() => {})
+    return next(err)
+  }
 })
 
 router.patch("/:id/trip", requireAdmin, async (req, res, next) => {

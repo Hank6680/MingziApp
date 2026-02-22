@@ -81,11 +81,16 @@ label {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   padding: 0.5rem 0.75rem;
   border-radius: 0.4rem;
   border: 1px solid #d1d5db;
+}
+
+textarea {
+  resize: vertical;
 }
 
 button {
@@ -163,6 +168,62 @@ table td {
 table th {
   background-color: #f3f4f6;
   font-weight: 600;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .inventory-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.inventory-card {
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+}
+
+.inventory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.table-wrapper {
+  background: #fff;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+}
+
+.order-summary {
+  margin-top: 1.5rem;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+}
+
+.order-summary h2 {
+  margin-top: 0;
+}
+
+.order-summary-total {
+  text-align: right;
+  font-weight: 600;
+  margin-top: 1rem;
 }
 
 .muted {

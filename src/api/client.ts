@@ -141,3 +141,29 @@ export function updateOrderItemStatus(
     token,
   })
 }
+
+export interface InventoryInboundPayload {
+  productId: number
+  quantity: number
+  logDate?: string
+  remark?: string
+}
+
+export function getInventorySummary(token: string) {
+  return request<{ items: Product[] }>(`/api/inventory/summary`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function inboundInventory(payload: InventoryInboundPayload, token: string) {
+  return request<{ item: Product }>(`/api/inventory/inbound`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function createInboundRecord(payload: InventoryInboundPayload, token: string) {
+  return inboundInventory(payload, token)
+}

@@ -9,6 +9,16 @@ import {
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import type { Product } from '../types'
+import { formatMoney } from '../utils/money'
+
+interface OrderSummaryItem {
+  productId: number
+  name: string
+  unit: string
+  qty: number
+  unitPrice: number
+  lineTotal: number
+}
 
 export default function ProductsPage() {
   const { token, user } = useAuth()
@@ -26,10 +36,17 @@ export default function ProductsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ name: '', unit: '', warehouseType: '', price: '' })
+  const [orderSummary, setOrderSummary] = useState<{ items: OrderSummaryItem[]; total: number } | null>(null)
 
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const unitOptions = ['kg', '箱', '袋', '件', '桶']
   const warehouseOptions = ['干', '鲜', '冻']
+
+  const productMap = useMemo(() => {
+    const map = new Map<number, Product>()
+    products.forEach((product) => map.set(product.id, product))
+    return map
+  }, [products])
 
   const uniqueOptions = (current: string, base: string[]) => {
     const list = current ? [current, ...base] : base
@@ -85,6 +102,7 @@ export default function ProductsPage() {
 
   const handleSubmit = async (evt: FormEvent) => {
     evt.preventDefault()
+    setOrderSummary(null)
     if (!deliveryDate) {
       setResult('请先选择送达日期')
       return
@@ -96,17 +114,38 @@ export default function ProductsPage() {
     try {
       setSubmitting(true)
       setResult(null)
-      await createOrder(
+      const response = await createOrder(
         {
           deliveryDate: new Date(deliveryDate).toISOString(),
           items: selectedItems.map((item) => ({ productId: item.productId, qtyOrdered: item.qty })),
         },
         token!
       )
+
+      const summaryItems: OrderSummaryItem[] = selectedItems.map((item) => {
+        const product = productMap.get(item.productId)
+        const unitPrice = product?.price ?? 0
+        const lineTotal = Math.round(item.qty * unitPrice * 100) / 100
+        return {
+          productId: item.productId,
+          name: product?.name ?? `商品 #${item.productId}`,
+          unit: product?.unit ?? '',
+          qty: item.qty,
+          unitPrice,
+          lineTotal,
+        }
+      })
+      const computedTotal = summaryItems.reduce((sum, item) => sum + item.lineTotal, 0)
+
+      setOrderSummary({
+        items: summaryItems,
+        total: Math.round((response?.totalAmount ?? computedTotal) * 100) / 100,
+      })
       setResult('下单成功，订单已创建！')
       setQuantities({})
     } catch (err) {
       setResult((err as Error).message)
+      setOrderSummary(null)
     } finally {
       setSubmitting(false)
     }
@@ -333,7 +372,7 @@ export default function ProductsPage() {
                         onChange={(e) => handleEditInputChange('price', e.target.value)}
                       />
                     ) : (
-                      <>¥{product.price.toFixed(2)}</>
+                      <>{formatMoney(product.price)}</>
                     )}
                   </td>
                   <td>{product.isAvailable ? '在售' : '暂停'}</td>
@@ -399,6 +438,37 @@ export default function ProductsPage() {
         </div>
         {result && <p className="hint">{result}</p>}
       </form>
+
+      {orderSummary && (
+        <div className="order-summary">
+          <h2>价格明细</h2>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>商品</th>
+                  <th>数量</th>
+                  <th>单价</th>
+                  <th>小计</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderSummary.items.map((item) => (
+                  <tr key={item.productId}>
+                    <td>{item.name}</td>
+                    <td>
+                      {item.qty} {item.unit}
+                    </td>
+                    <td>{formatMoney(item.unitPrice)}</td>
+                    <td>{formatMoney(item.lineTotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="order-summary-total">总价：{formatMoney(orderSummary.total)}</div>
+        </div>
+      )}
     </div>
   )
 }

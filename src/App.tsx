@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
 import PickingPage from './pages/PickingPage'
+import InventoryPage from './pages/InventoryPage'
 import './App.css'
 
 export default function App() {
@@ -38,6 +39,14 @@ export default function App() {
             element={
               <ProtectedRoute roles={['admin']}>
                 <PickingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <InventoryPage />
               </ProtectedRoute>
             }
           />

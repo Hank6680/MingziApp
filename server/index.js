@@ -31,6 +31,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/products", require("./routes/products"))
 app.use("/api/orders", require("./routes/orders"))
 app.use("/api/auth", require("./routes/auth"))
+app.use("/api/inventory", require("./routes/inventory"))
 
 app.use((req, _res, next) => {
   next(httpError(404, `Route ${req.method} ${req.originalUrl} not found`, "NOT_FOUND"))

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getOrders, updateOrderStatus, updateOrderTrip } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import type { Order } from '../types'
+import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 
 const STATUSES = ['created', 'confirmed', 'shipped', 'completed', 'cancelled']
 
@@ -43,6 +44,7 @@ export default function OrdersPage() {
     try {
       await updateOrderStatus(orderId, status, token)
       setMessage('状态已更新')
+      window.dispatchEvent(new CustomEvent(INVENTORY_REFRESH_EVENT))
       fetchOrders()
     } catch (err) {
       setMessage((err as Error).message)

@@ -23,7 +23,21 @@ db.serialize(() => {
       unit TEXT,
       warehouseType TEXT,
       price REAL,
-      isAvailable INTEGER
+      isAvailable INTEGER,
+      stock INTEGER NOT NULL DEFAULT 0
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS inventory_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      productId INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      logDate TEXT NOT NULL,
+      remark TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(productId) REFERENCES products(id)
     )
   `)
 
@@ -43,7 +57,8 @@ db.serialize(() => {
       customerId INTEGER,
       deliveryDate TEXT,
       status TEXT DEFAULT 'created',
-      tripNumber TEXT
+      tripNumber TEXT,
+      stockDeducted INTEGER NOT NULL DEFAULT 0
     )
   `)
 
@@ -63,6 +78,8 @@ db.serialize(() => {
   ensureColumn("orders", "tripNumber", "TEXT", "NULL")
   ensureColumn("order_items", "picked", "INTEGER", 0)
   ensureColumn("order_items", "outOfStock", "INTEGER", 0)
+  ensureColumn("products", "stock", "INTEGER NOT NULL", 0)
+  ensureColumn("orders", "stockDeducted", "INTEGER NOT NULL", 0)
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
     if (err) {

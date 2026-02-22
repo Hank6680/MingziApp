@@ -18,7 +18,12 @@ export default function Navbar() {
           <>
             <Link to="/products">商品下单</Link>
             <Link to="/orders">订单列表</Link>
-            {user.role === 'admin' && <Link to="/picking">拣货任务</Link>}
+            {user.role === 'admin' && (
+              <>
+                <Link to="/picking">拣货任务</Link>
+                <Link to="/inventory">库存统计</Link>
+              </>
+            )}
           </>
         )}
       </nav>
