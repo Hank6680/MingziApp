@@ -35,6 +35,7 @@ export interface OrderItem {
   productUnit?: string
   productWarehouseType?: string
   productPrice?: number
+  unitPrice?: number
 }
 
 export interface Order {

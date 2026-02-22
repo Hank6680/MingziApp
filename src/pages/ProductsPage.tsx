@@ -116,7 +116,7 @@ export default function ProductsPage() {
       setResult(null)
       const response = await createOrder(
         {
-          deliveryDate: new Date(deliveryDate).toISOString(),
+          deliveryDate: deliveryDate,
           items: selectedItems.map((item) => ({ productId: item.productId, qtyOrdered: item.qty })),
         },
         token!

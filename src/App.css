@@ -195,11 +195,31 @@ table th {
   gap: 1rem;
 }
 
-.inventory-header {
+.inventory-header,
+.inventory-log-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.log-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.log-tabs button {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.log-tabs button.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
 }
 
 .table-wrapper {
@@ -268,6 +288,30 @@ table th {
   border-radius: 0.75rem;
   padding: 1rem;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+}
+
+.order-price-summary {
+  text-align: right;
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+.order-add-item {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.order-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.order-add-form select,
+.order-add-form input {
+  min-width: 140px;
 }
 
 .order-head {

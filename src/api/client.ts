@@ -55,7 +55,15 @@ export function getProducts(
   })
 }
 
-export function createOrder(payload: { deliveryDate: string; items: { productId: number; qtyOrdered: number }[] }, token: string) {
+export interface OrderItemInput {
+  productId: number
+  qtyOrdered: number
+}
+
+export function createOrder(
+  payload: { deliveryDate: string; items: OrderItemInput[]; customerId?: number },
+  token: string
+) {
   return request<Order>('/api/orders', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -142,11 +150,57 @@ export function updateOrderItemStatus(
   })
 }
 
+export interface OrderItemEditPayload {
+  qtyOrdered?: number
+  unitPrice?: number
+}
+
+export interface AddOrderItemPayload {
+  productId: number
+  qtyOrdered: number
+  unitPrice?: number
+}
+
+export function addOrderItem(orderId: number, payload: AddOrderItemPayload, token: string) {
+  return request<{ order: Order; redirectedOrderId?: number }>(`/api/orders/${orderId}/items`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function updateOrderItemFields(itemId: number, payload: OrderItemEditPayload, token: string) {
+  return request<Order>(`/api/orders/items/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function deleteOrderItem(itemId: number, token: string) {
+  return request<Order>(`/api/orders/items/${itemId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
 export interface InventoryInboundPayload {
   productId: number
   quantity: number
   logDate?: string
   remark?: string
+}
+
+export interface InventoryReturnPayload extends InventoryInboundPayload {
+  partnerName: string
+  reason?: string
+}
+
+export interface InventoryDamagePayload {
+  productId: number
+  quantity: number
+  logDate?: string
+  reason?: string
 }
 
 export function getInventorySummary(token: string) {
@@ -166,4 +220,31 @@ export function inboundInventory(payload: InventoryInboundPayload, token: string
 
 export function createInboundRecord(payload: InventoryInboundPayload, token: string) {
   return inboundInventory(payload, token)
+}
+
+export function createReturnRecord(payload: InventoryReturnPayload, token: string) {
+  return request<{ item: Product }>(`/api/inventory/returns`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function createDamageRecord(payload: InventoryDamagePayload, token: string) {
+  return request<{ item: Product }>(`/api/inventory/damages`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function getInventoryLogs(params: { type?: string; limit?: number } = {}, token: string) {
+  const search = new URLSearchParams()
+  if (params.type) search.set('type', params.type)
+  if (params.limit) search.set('limit', String(params.limit))
+  const suffix = search.toString() ? `?${search.toString()}` : ''
+  return request<{ items: Array<Record<string, unknown>> }>(`/api/inventory/logs${suffix}`, {
+    method: 'GET',
+    token,
+  })
 }

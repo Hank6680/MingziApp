@@ -6,6 +6,7 @@ const { requireAuth, requireAdmin } = require("../middleware/auth")
 const router = express.Router()
 const boxUnits = new Set(["箱", "桶", "包"])
 const allowedStatuses = new Set(["created", "confirmed", "shipped", "completed", "cancelled"])
+const lockedStatuses = new Set(["shipped", "completed", "cancelled"])
 
 // Migrate: add columns if not yet present (sqlite3 ignores error if column exists)
 db.run("ALTER TABLE orders ADD COLUMN totalAmount REAL DEFAULT 0", () => {})
@@ -76,7 +77,11 @@ const validateDeliveryDate = (deliveryDate) => {
   if (Number.isNaN(timestamp)) {
     throw httpError(400, "deliveryDate must be a valid ISO date", "VALIDATION_ERROR")
   }
-  return new Date(timestamp).toISOString()
+  const date = new Date(timestamp)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const day = String(date.getUTCDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 // unit=kg: > 0, max 2 decimal places
@@ -95,6 +100,69 @@ const validateQty = (unit, qty) => {
     }
   }
   return null
+}
+
+const recalcOrderTotal = async (orderId) => {
+  const rows = await dbAll("SELECT qtyOrdered, unitPrice FROM order_items WHERE orderId = ?", [orderId])
+  const total =
+    Math.round(rows.reduce((sum, row) => sum + (Number(row.qtyOrdered) || 0) * (Number(row.unitPrice) || 0), 0) * 100) /
+    100
+  await dbRun("UPDATE orders SET totalAmount = ? WHERE id = ?", [total, orderId])
+  return total
+}
+
+const fetchOrderRow = async (orderId) => {
+  const order = await dbGet("SELECT * FROM orders WHERE id = ?", [orderId])
+  if (!order) {
+    throw httpError(404, "Order not found", "NOT_FOUND")
+  }
+  return order
+}
+
+const fetchOrderItemDetail = async (itemId) => {
+  const row = await dbGet(
+    `SELECT oi.*, o.status as orderStatus, o.customerId, o.deliveryDate, o.id as parentOrderId, p.unit, p.name as productName
+     FROM order_items oi
+     JOIN orders o ON o.id = oi.orderId
+     LEFT JOIN products p ON p.id = oi.productId
+     WHERE oi.id = ?`,
+    [itemId]
+  )
+  if (!row) {
+    throw httpError(404, "Order item not found", "NOT_FOUND")
+  }
+  return row
+}
+
+const normalizeQtyInput = (unit, qty) => {
+  const normalized = Number(qty)
+  const error = validateQty(unit, normalized)
+  if (error) {
+    throw httpError(400, error, "INVALID_QUANTITY")
+  }
+  return normalized
+}
+
+const requireEditableOrder = (order) => {
+  if (lockedStatuses.has(order.status)) {
+    throw httpError(409, "订单已发货或完成，无法直接修改，请创建新订单", "ORDER_LOCKED")
+  }
+}
+
+const fetchProductInfo = async (productId) => {
+  const product = await dbGet("SELECT * FROM products WHERE id = ?", [productId])
+  if (!product) {
+    throw httpError(404, "Product not found", "NOT_FOUND")
+  }
+  return product
+}
+
+const createFollowupOrder = async (orderRow) => {
+  const result = await dbRun(
+    "INSERT INTO orders (customerId, deliveryDate, status, totalAmount, tripNumber, stockDeducted) VALUES (?, ?, 'created', 0, NULL, 0)",
+    [orderRow.customerId, orderRow.deliveryDate]
+  )
+  return result.lastID
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -242,6 +310,22 @@ router.post("/", async (req, res, next) => {
   }
 
   try {
+    let existingOrderId = null
+    const shouldAutoMerge = req.user.role !== "admin"
+    if (shouldAutoMerge) {
+      const existing = await dbGet(
+        `SELECT id FROM orders
+         WHERE customerId = ?
+           AND status IN ('created','confirmed')
+           AND (deliveryDate = ? OR date(deliveryDate) = date(?))
+         ORDER BY id ASC LIMIT 1`,
+        [effectiveCustomerId, normalizedDeliveryDate, normalizedDeliveryDate]
+      )
+      if (existing) {
+        existingOrderId = existing.id
+      }
+    }
+
     // 4. Fetch products (availability + price + unit)
     const productIds = [...new Set(items.map((item) => Number(item.productId)))]
     const placeholders = productIds.map(() => "?").join(",")
@@ -289,7 +373,6 @@ router.post("/", async (req, res, next) => {
       })
     }
 
-    // 6. Calculate total_amount
     const totalAmount =
       Math.round(
         validatedItems.reduce((sum, item) => sum + item.qtyOrdered * item.unitPrice, 0) * 100
@@ -299,11 +382,14 @@ router.post("/", async (req, res, next) => {
     await dbRun("BEGIN IMMEDIATE")
 
     try {
-      const orderResult = await dbRun(
-        "INSERT INTO orders (customerId, deliveryDate, status, totalAmount) VALUES (?, ?, ?, ?)",
-        [effectiveCustomerId, normalizedDeliveryDate, "created", totalAmount]
-      )
-      const orderId = orderResult.lastID
+      let orderId = existingOrderId
+      if (!orderId) {
+        const orderResult = await dbRun(
+          "INSERT INTO orders (customerId, deliveryDate, status, totalAmount) VALUES (?, ?, ?, ?)",
+          [effectiveCustomerId, normalizedDeliveryDate, "created", totalAmount]
+        )
+        orderId = orderResult.lastID
+      }
 
       for (const item of validatedItems) {
         await dbRun(
@@ -312,9 +398,10 @@ router.post("/", async (req, res, next) => {
         )
       }
 
+      const updatedTotal = await recalcOrderTotal(orderId)
       await dbRun("COMMIT")
 
-      return res.status(201).json({ orderId, totalAmount })
+      return res.status(existingOrderId ? 200 : 201).json({ orderId, totalAmount: updatedTotal, merged: Boolean(existingOrderId) })
     } catch (txErr) {
       await dbRun("ROLLBACK").catch(() => {})
       throw txErr
@@ -432,6 +519,109 @@ router.patch("/:id/trip", requireAdmin, async (req, res, next) => {
       return next(fetchErr)
     }
   })
+})
+
+router.post("/:id/items", requireAdmin, async (req, res, next) => {
+  const orderId = Number(req.params.id)
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
+  }
+
+  const { productId, qtyOrdered, unitPrice } = req.body || {}
+  if (!Number.isInteger(Number(productId)) || Number(productId) <= 0) {
+    return next(httpError(400, "productId must be a positive integer", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const product = await fetchProductInfo(Number(productId))
+    const qty = normalizeQtyInput(product.unit, Number(qtyOrdered))
+    const orderRow = await fetchOrderRow(orderId)
+
+    let targetOrderId = orderId
+    let redirectedOrderId = null
+
+    if (lockedStatuses.has(orderRow.status)) {
+      targetOrderId = await createFollowupOrder(orderRow)
+      redirectedOrderId = targetOrderId
+    }
+
+    const price = unitPrice != null && !Number.isNaN(Number(unitPrice)) ? Number(unitPrice) : product.price || 0
+
+    await dbRun(
+      "INSERT INTO order_items (orderId, productId, qtyOrdered, qtyPicked, unitPrice, status) VALUES (?, ?, ?, 0, ?, 'created')",
+      [targetOrderId, product.id, qty, price]
+    )
+
+    await recalcOrderTotal(targetOrderId)
+    const order = await fetchOrderWithItems(targetOrderId)
+    return res.status(201).json({ order, redirectedOrderId })
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.patch("/items/:id", requireAdmin, async (req, res, next) => {
+  const itemId = Number(req.params.id)
+  if (!Number.isInteger(itemId) || itemId <= 0) {
+    return next(httpError(400, "Invalid item id", "VALIDATION_ERROR"))
+  }
+
+  const { qtyOrdered, unitPrice } = req.body || {}
+
+  if (qtyOrdered == null && unitPrice == null) {
+    return next(httpError(400, "No fields to update", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const detail = await fetchOrderItemDetail(itemId)
+    requireEditableOrder({ status: detail.orderStatus })
+
+    const updates = []
+    const params = []
+
+    if (qtyOrdered != null) {
+      const qty = normalizeQtyInput(detail.unit, Number(qtyOrdered))
+      updates.push("qtyOrdered = ?")
+      params.push(qty)
+    }
+
+    if (unitPrice != null) {
+      const price = Number(unitPrice)
+      if (!Number.isFinite(price)) {
+        return next(httpError(400, "unitPrice must be a number", "VALIDATION_ERROR"))
+      }
+      updates.push("unitPrice = ?")
+      params.push(price)
+    }
+
+    params.push(itemId)
+
+    await dbRun(`UPDATE order_items SET ${updates.join(", ")} WHERE id = ?`, params)
+    await recalcOrderTotal(detail.parentOrderId)
+    const order = await fetchOrderWithItems(detail.parentOrderId)
+    return res.json(order)
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.delete("/items/:id", requireAdmin, async (req, res, next) => {
+  const itemId = Number(req.params.id)
+  if (!Number.isInteger(itemId) || itemId <= 0) {
+    return next(httpError(400, "Invalid item id", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const detail = await fetchOrderItemDetail(itemId)
+    requireEditableOrder({ status: detail.orderStatus })
+
+    await dbRun("DELETE FROM order_items WHERE id = ?", [itemId])
+    await recalcOrderTotal(detail.parentOrderId)
+    const order = await fetchOrderWithItems(detail.parentOrderId)
+    return res.json(order)
+  } catch (err) {
+    return next(err)
+  }
 })
 
 router.patch("/items/:id/status", async (req, res, next) => {

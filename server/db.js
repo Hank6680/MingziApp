@@ -36,6 +36,9 @@ db.serialize(() => {
       quantity INTEGER NOT NULL,
       logDate TEXT NOT NULL,
       remark TEXT,
+      partnerName TEXT,
+      reason TEXT,
+      refOrderId INTEGER,
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(productId) REFERENCES products(id)
     )
@@ -80,6 +83,9 @@ db.serialize(() => {
   ensureColumn("order_items", "outOfStock", "INTEGER", 0)
   ensureColumn("products", "stock", "INTEGER NOT NULL", 0)
   ensureColumn("orders", "stockDeducted", "INTEGER NOT NULL", 0)
+  ensureColumn("inventory_logs", "partnerName", "TEXT")
+  ensureColumn("inventory_logs", "reason", "TEXT")
+  ensureColumn("inventory_logs", "refOrderId", "INTEGER")
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
     if (err) {
