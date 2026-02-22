@@ -126,6 +126,34 @@ export function updateOrderTrip(orderId: number, tripNumber: string | null, toke
   })
 }
 
+export function getPendingOrderChanges(token: string) {
+  return request<{ items: Order[] }>(`/api/orders/pending/changes`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function acknowledgeOrderChange(orderId: number, token: string) {
+  return request<{ orderId: number }>(`/api/orders/${orderId}/review`, {
+    method: 'PATCH',
+    token,
+  })
+}
+
+export function getPendingOrders(token: string) {
+  return request<{ items: Order[] }>(`/api/orders/pending/changes`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function acknowledgeOrderReview(orderId: number, token: string) {
+  return request<{ orderId: number }>(`/api/orders/${orderId}/review`, {
+    method: 'PATCH',
+    token,
+  })
+}
+
 export function getPickingItems(params: { trip: string; warehouseType?: string }, token: string) {
   const query = new URLSearchParams()
   query.set('trip', params.trip)

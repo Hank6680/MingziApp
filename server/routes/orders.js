@@ -123,7 +123,10 @@ const markOrderPending = async (orderId, detail) => {
   const stamp = new Date().toISOString()
   await dbRun("UPDATE orders SET pendingReview = 1, lastModifiedAt = ? WHERE id = ?", [stamp, orderId])
   if (detail) {
-    await dbRun("INSERT INTO order_change_logs (orderId, type, detail, createdAt) VALUES (?, 'change', ?, ?)", [orderId, detail, stamp])
+    await dbRun(
+      "INSERT INTO order_change_logs (orderId, type, detail, createdAt) VALUES (?, 'change', ?, ?)",
+      [orderId, detail, stamp]
+    )
   }
 }
 
@@ -419,6 +422,23 @@ router.post("/", async (req, res, next) => {
       await dbRun("ROLLBACK").catch(() => {})
       throw txErr
     }
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.get("/pending/changes", requireAdmin, async (_req, res, next) => {
+  try {
+    const rows = await dbAll(
+      `SELECT o.*, (
+          SELECT json_group_array(json_object('id', l.id, 'detail', l.detail, 'createdAt', l.createdAt))
+          FROM order_change_logs l WHERE l.orderId = o.id
+        ) as changes
+       FROM orders o
+       WHERE o.pendingReview = 1 AND o.status IN ('created','confirmed')
+       ORDER BY o.lastModifiedAt DESC`
+    )
+    return res.json({ items: rows })
   } catch (err) {
     return next(err)
   }

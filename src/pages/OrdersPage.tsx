@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   addOrderItem,
+  acknowledgeOrderChange,
   deleteOrderItem,
   getOrders,
+  getPendingOrderChanges,
   getProducts,
   updateOrderItemFields,
   updateOrderStatus,
@@ -55,6 +57,8 @@ export default function OrdersPage() {
   const [productsCache, setProductsCache] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(false)
   const [adminMessage, setAdminMessage] = useState<string | null>(null)
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
 
   const isAdmin = user?.role === 'admin'
 
@@ -70,6 +74,19 @@ export default function OrdersPage() {
       setProductsLoading(false)
     }
   }, [isAdmin, productsCache, token])
+
+  const fetchPendingOrders = useCallback(async () => {
+    if (!token || !isAdmin) return
+    try {
+      setPendingLoading(true)
+      const data = await getPendingOrderChanges(token)
+      setPendingOrders(data.items ?? [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setPendingLoading(false)
+    }
+  }, [isAdmin, token])
 
   const fetchOrders = async () => {
     if (!token) return

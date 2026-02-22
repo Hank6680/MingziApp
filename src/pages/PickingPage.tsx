@@ -1,11 +1,19 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
-import { getPickingItems, updateOrderItemStatus } from '../api/client'
+import { acknowledgeOrderChange, getPendingOrderChanges, getPickingItems, updateOrderItemStatus } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import type { PickingItem } from '../types'
 
 const warehouseOptions = ['全部', '干', '鲜', '冻']
+
+interface PendingOrder {
+  id: number
+  customerId: number | null
+  deliveryDate: string
+  lastModifiedAt: string
+  changes?: string
+}
 
 export default function PickingPage() {
   const { token } = useAuth()
@@ -14,6 +22,8 @@ export default function PickingPage() {
   const [items, setItems] = useState<PickingItem[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
   const lastLoadedAt = useRef<Date | null>(null)
   const printAreaRef = useRef<HTMLDivElement | null>(null)
 
@@ -88,9 +98,65 @@ export default function PickingPage() {
     }
   }
 
+  const fetchPendingOrders = async () => {
+    if (!token) return
+    try {
+      setPendingLoading(true)
+      const data = await getPendingOrderChanges(token)
+      const parsed = (data.items || []).map((order) => ({
+        ...order,
+        changes: order.changes ? order.changes : undefined,
+      }))
+      setPendingOrders(parsed)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setPendingLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPendingOrders()
+  }, [token])
+
+  const handleAcknowledge = async (orderId: number) => {
+    if (!token) return
+    try {
+      await acknowledgeOrderChange(orderId, token)
+      setPendingOrders((prev) => prev.filter((order) => order.id !== orderId))
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   return (
     <div>
       <h1>拣货任务</h1>
+      {pendingOrders.length > 0 && (
+        <div className="pending-changes">
+          <div className="pending-header">
+            <strong>有 {pendingOrders.length} 张订单新增/调整待确认</strong>
+            <button type="button" className="ghost" onClick={fetchPendingOrders} disabled={pendingLoading}>
+              {pendingLoading ? '刷新中…' : '刷新'}
+            </button>
+          </div>
+          <ul>
+            {pendingOrders.map((order) => (
+              <li key={order.id}>
+                <div>
+                  <span>
+                    订单 #{order.id} · 客户 {order.customerId ?? '-'} · 送达 {order.deliveryDate}
+                  </span>
+                  <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>
+                </div>
+                <button type="button" onClick={() => handleAcknowledge(order.id)}>
+                  确认处理
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="filters">
         <input placeholder="车次（如 第1车）" value={trip} onChange={(e) => setTrip(e.target.value)} />
         <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
