@@ -119,6 +119,18 @@ const fetchOrderRow = async (orderId) => {
   return order
 }
 
+const markOrderPending = async (orderId, detail) => {
+  const stamp = new Date().toISOString()
+  await dbRun("UPDATE orders SET pendingReview = 1, lastModifiedAt = ? WHERE id = ?", [stamp, orderId])
+  if (detail) {
+    await dbRun("INSERT INTO order_change_logs (orderId, type, detail, createdAt) VALUES (?, 'change', ?, ?)", [orderId, detail, stamp])
+  }
+}
+
+const clearOrderPending = async (orderId) => {
+  await dbRun("UPDATE orders SET pendingReview = 0 WHERE id = ?", [orderId])
+}
+
 const fetchOrderItemDetail = async (itemId) => {
   const row = await dbGet(
     `SELECT oi.*, o.status as orderStatus, o.customerId, o.deliveryDate, o.id as parentOrderId, p.unit, p.name as productName
@@ -399,6 +411,7 @@ router.post("/", async (req, res, next) => {
       }
 
       const updatedTotal = await recalcOrderTotal(orderId)
+      await markOrderPending(orderId, JSON.stringify({ items }))
       await dbRun("COMMIT")
 
       return res.status(existingOrderId ? 200 : 201).json({ orderId, totalAmount: updatedTotal, merged: Boolean(existingOrderId) })
@@ -492,6 +505,20 @@ router.patch("/:id/status", requireAdmin, async (req, res, next) => {
     return res.json(order)
   } catch (err) {
     await dbRun("ROLLBACK").catch(() => {})
+    return next(err)
+  }
+})
+
+router.patch("/:id/review", requireAdmin, async (req, res, next) => {
+  const orderId = Number(req.params.id)
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
+  }
+
+  try {
+    await clearOrderPending(orderId)
+    return res.json({ orderId })
+  } catch (err) {
     return next(err)
   }
 })

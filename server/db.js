@@ -45,6 +45,17 @@ db.serialize(() => {
   `)
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS order_change_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      detail TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id)
+    )
+  `)
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT,
@@ -61,7 +72,9 @@ db.serialize(() => {
       deliveryDate TEXT,
       status TEXT DEFAULT 'created',
       tripNumber TEXT,
-      stockDeducted INTEGER NOT NULL DEFAULT 0
+      stockDeducted INTEGER NOT NULL DEFAULT 0,
+      pendingReview INTEGER NOT NULL DEFAULT 0,
+      lastModifiedAt TEXT
     )
   `)
 
@@ -83,9 +96,12 @@ db.serialize(() => {
   ensureColumn("order_items", "outOfStock", "INTEGER", 0)
   ensureColumn("products", "stock", "INTEGER NOT NULL", 0)
   ensureColumn("orders", "stockDeducted", "INTEGER NOT NULL", 0)
+  ensureColumn("orders", "pendingReview", "INTEGER NOT NULL", 0)
+  ensureColumn("orders", "lastModifiedAt", "TEXT")
   ensureColumn("inventory_logs", "partnerName", "TEXT")
   ensureColumn("inventory_logs", "reason", "TEXT")
   ensureColumn("inventory_logs", "refOrderId", "INTEGER")
+  ensureColumn("order_change_logs", "type", "TEXT")
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
     if (err) {
