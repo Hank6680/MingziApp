@@ -3,6 +3,7 @@ import {
   addOrderItem,
   acknowledgeOrderChange,
   deleteOrderItem,
+  getOrderChangeLogs,
   getOrders,
   getPendingOrderChanges,
   getProducts,
@@ -11,9 +12,10 @@ import {
   updateOrderTrip,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Order, Product } from '../types'
+import type { Order, OrderChangeLog, PendingOrderSummary, Product } from '../types'
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
+import { describeOrderChange } from '../utils/orderChanges'
 
 const STATUSES = ['created', 'confirmed', 'shipped', 'completed', 'cancelled']
 
@@ -35,9 +37,9 @@ const getLineTotals = (item: Order['items'][number]) => {
   return { unitPrice, lineTotal }
 }
 
-const computeOrderTotal = (items: Order['items']) =>
+const computeOrderTotal = (items?: Order['items']) =>
   Math.round(
-    items.reduce((sum, item) => {
+    (items ?? []).reduce((sum, item) => {
       const { lineTotal } = getLineTotals(item)
       return sum + lineTotal
     }, 0) * 100
@@ -57,8 +59,15 @@ export default function OrdersPage() {
   const [productsCache, setProductsCache] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(false)
   const [adminMessage, setAdminMessage] = useState<string | null>(null)
-  const [pendingOrders, setPendingOrders] = useState<Order[]>([])
+  const [pendingOrders, setPendingOrders] = useState<PendingOrderSummary[]>([])
   const [pendingLoading, setPendingLoading] = useState(false)
+  const [pendingError, setPendingError] = useState<string | null>(null)
+  const [pendingExpanded, setPendingExpanded] = useState(false)
+  const [pendingActions, setPendingActions] = useState<Record<number, boolean>>({})
+  const [orderLogs, setOrderLogs] = useState<Record<number, OrderChangeLog[]>>({})
+  const [orderLogsLoading, setOrderLogsLoading] = useState<Record<number, boolean>>({})
+  const [orderLogsVisible, setOrderLogsVisible] = useState<Record<number, boolean>>({})
+  const [orderLogsError, setOrderLogsError] = useState<Record<number, string | null>>({})
 
   const isAdmin = user?.role === 'admin'
 
@@ -79,10 +88,11 @@ export default function OrdersPage() {
     if (!token || !isAdmin) return
     try {
       setPendingLoading(true)
+      setPendingError(null)
       const data = await getPendingOrderChanges(token)
       setPendingOrders(data.items ?? [])
     } catch (err) {
-      console.error(err)
+      setPendingError((err as Error).message)
     } finally {
       setPendingLoading(false)
     }
@@ -112,6 +122,10 @@ export default function OrdersPage() {
     fetchOrders()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
+
+  useEffect(() => {
+    fetchPendingOrders()
+  }, [fetchPendingOrders])
 
   useEffect(() => {
     if (editingOrderId && isAdmin) {
@@ -264,6 +278,38 @@ export default function OrdersPage() {
     }
   }
 
+  const handleConfirmPending = async (orderId: number) => {
+    if (!token) return
+    try {
+      setPendingActions((prev) => ({ ...prev, [orderId]: true }))
+      await acknowledgeOrderChange(orderId, token)
+      setMessage('已确认拣货变更')
+      await Promise.all([fetchPendingOrders(), fetchOrders()])
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setPendingActions((prev) => ({ ...prev, [orderId]: false }))
+    }
+  }
+
+  const toggleOrderLogs = async (orderId: number) => {
+    if (!token) return
+    const nextVisible = !orderLogsVisible[orderId]
+    setOrderLogsVisible((prev) => ({ ...prev, [orderId]: nextVisible }))
+    if (!nextVisible) return
+    if (orderLogs[orderId]?.length) return
+    try {
+      setOrderLogsLoading((prev) => ({ ...prev, [orderId]: true }))
+      setOrderLogsError((prev) => ({ ...prev, [orderId]: null }))
+      const data = await getOrderChangeLogs(orderId, token)
+      setOrderLogs((prev) => ({ ...prev, [orderId]: data.items ?? [] }))
+    } catch (err) {
+      setOrderLogsError((prev) => ({ ...prev, [orderId]: (err as Error).message }))
+    } finally {
+      setOrderLogsLoading((prev) => ({ ...prev, [orderId]: false }))
+    }
+  }
+
   return (
     <div>
       <div className="orders-header">
@@ -274,6 +320,68 @@ export default function OrdersPage() {
       {error && <p className="error-text">{error}</p>}
       {message && <p className="hint">{message}</p>}
 
+      {isAdmin && (
+        <section className="pending-changes-panel">
+          <div className="pending-header">
+            <div>
+              <strong>本次拣货有 {pendingOrders.length} 单待确认变更</strong>
+              {pendingOrders.length === 0 && !pendingLoading && <p className="muted">暂无加单或数量差异。</p>}
+            </div>
+            <div className="pending-actions">
+              <button type="button" className="ghost" onClick={fetchPendingOrders} disabled={pendingLoading}>
+                {pendingLoading ? '刷新中…' : '刷新'}
+              </button>
+              {pendingOrders.length > 0 && (
+                <button type="button" onClick={() => setPendingExpanded((prev) => !prev)}>
+                  {pendingExpanded ? '收起' : '展开查看'}
+                </button>
+              )}
+            </div>
+          </div>
+          {pendingError && <p className="error-text">{pendingError}</p>}
+          {pendingExpanded && pendingOrders.length > 0 && (
+            <ul className="pending-orders-list">
+              {pendingOrders.map((pending) => (
+                <li key={pending.id}>
+                  <div className="pending-order-meta">
+                    <div>
+                      <span>
+                        订单 #{pending.id} · 客户 {pending.customerId ?? '-'} · 送达 {formatDeliveryDate(pending.deliveryDate)}
+                      </span>
+                      <small>最近变更：{pending.lastModifiedAt ? new Date(pending.lastModifiedAt).toLocaleString() : '-'}</small>
+                    </div>
+                    <div className="pending-order-actions">
+                      <span className="badge">{pending.pendingChangeCount ?? pending.changes?.length ?? 0} 条差异</span>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmPending(pending.id)}
+                        disabled={pendingActions[pending.id]}
+                      >
+                        {pendingActions[pending.id] ? '处理中…' : '确认拣货变更'}
+                      </button>
+                    </div>
+                  </div>
+                  {pending.changes && pending.changes.length > 0 ? (
+                    <ul className="pending-change-details">
+                      {pending.changes.map((change) => (
+                        <li key={change.id}>
+                          <div>
+                            <span>{new Date(change.createdAt).toLocaleString()}</span>
+                            <p>{describeOrderChange(change)}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">暂无差异明细。</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {orders.length === 0 ? (
         <p>暂无订单。</p>
       ) : (
@@ -282,42 +390,49 @@ export default function OrdersPage() {
             <div key={order.id}>
               <div className="order-card">
                 <div className="order-head">
-                <div>
-                  <strong>订单 #{order.id}</strong>
-                  <p>客户 ID: {order.customerId ?? '未知'}</p>
-                  <p>送达日期: {formatDeliveryDate(order.deliveryDate)}</p>
-                </div>
-                <div className="order-controls">
                   <div>
-                    <p>状态：{order.status}</p>
+                    <strong>订单 #{order.id}</strong>
+                    {order.pendingReview ? <span className="badge warning">待确认变更</span> : null}
+                    <p>客户 ID: {order.customerId ?? '未知'}</p>
+                    <p>送达日期: {formatDeliveryDate(order.deliveryDate)}</p>
+                    {order.lastModifiedAt && <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>}
+                  </div>
+                  <div className="order-controls">
+                    <div>
+                      <p>状态：{order.status}</p>
+                      {isAdmin && (
+                        <select value={order.status} onChange={(e) => handleStatusChange(order.id, e.target.value)}>
+                          {STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                     {isAdmin && (
-                      <select value={order.status} onChange={(e) => handleStatusChange(order.id, e.target.value)}>
-                        {STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <div className="trip-input">
+                          <label>
+                            车次
+                            <input value={tripInputs[order.id] ?? ''} onChange={(e) => handleTripChange(order.id, e.target.value)} />
+                          </label>
+                          <button type="button" onClick={() => handleTripSave(order.id)}>
+                            保存
+                          </button>
+                        </div>
+                        <div className="order-head-actions">
+                          <button type="button" className="ghost" onClick={() => startEditOrder(order)}>
+                            {editingOrderId === order.id ? '完成编辑' : '编辑订单'}
+                          </button>
+                          <button type="button" className="ghost" onClick={() => toggleOrderLogs(order.id)}>
+                            {orderLogsVisible[order.id] ? '隐藏变更日志' : '查看变更日志'}
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
-                  {isAdmin && (
-                    <>
-                      <div className="trip-input">
-                        <label>
-                          车次
-                          <input value={tripInputs[order.id] ?? ''} onChange={(e) => handleTripChange(order.id, e.target.value)} />
-                        </label>
-                        <button type="button" onClick={() => handleTripSave(order.id)}>
-                          保存
-                        </button>
-                      </div>
-                      <button type="button" className="ghost" onClick={() => startEditOrder(order)}>
-                        {editingOrderId === order.id ? '完成编辑' : '编辑订单'}
-                      </button>
-                    </>
-                  )}
                 </div>
-              </div>
               <table>
                 <thead>
                   <tr>
@@ -441,6 +556,29 @@ export default function OrdersPage() {
             <div className="order-price-summary">
               订单总价：{formatMoney(order.totalAmount ?? computeOrderTotal(order.items ?? []))}
             </div>
+            {orderLogsVisible[order.id] && (
+              <div className="order-change-logs">
+                <h4>变更日志</h4>
+                {orderLogsLoading[order.id] && <p>加载日志…</p>}
+                {orderLogsError[order.id] && <p className="error-text">{orderLogsError[order.id]}</p>}
+                {!orderLogsLoading[order.id] && !orderLogsError[order.id] && (
+                  orderLogs[order.id]?.length ? (
+                    <ul>
+                      {orderLogs[order.id].map((log) => (
+                        <li key={log.id}>
+                          <div>
+                            <span>{new Date(log.createdAt).toLocaleString()}</span>
+                            <p>{describeOrderChange(log)}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">暂无日志记录。</p>
+                  )
+                )}
+              </div>
+            )}
           </div>
           ))}
         </div>

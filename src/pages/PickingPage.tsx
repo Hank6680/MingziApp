@@ -3,17 +3,11 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { acknowledgeOrderChange, getPendingOrderChanges, getPickingItems, updateOrderItemStatus } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { PickingItem } from '../types'
+import type { PendingOrderSummary, PickingItem } from '../types'
+import { describeOrderChange } from '../utils/orderChanges'
 
 const warehouseOptions = ['全部', '干', '鲜', '冻']
 
-interface PendingOrder {
-  id: number
-  customerId: number | null
-  deliveryDate: string
-  lastModifiedAt: string
-  changes?: string
-}
 
 export default function PickingPage() {
   const { token } = useAuth()
@@ -22,7 +16,7 @@ export default function PickingPage() {
   const [items, setItems] = useState<PickingItem[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
-  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  const [pendingOrders, setPendingOrders] = useState<PendingOrderSummary[]>([])
   const [pendingLoading, setPendingLoading] = useState(false)
   const lastLoadedAt = useRef<Date | null>(null)
   const printAreaRef = useRef<HTMLDivElement | null>(null)
@@ -103,11 +97,7 @@ export default function PickingPage() {
     try {
       setPendingLoading(true)
       const data = await getPendingOrderChanges(token)
-      const parsed = (data.items || []).map((order) => ({
-        ...order,
-        changes: order.changes ? order.changes : undefined,
-      }))
-      setPendingOrders(parsed)
+      setPendingOrders(data.items || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -147,8 +137,20 @@ export default function PickingPage() {
                   <span>
                     订单 #{order.id} · 客户 {order.customerId ?? '-'} · 送达 {order.deliveryDate}
                   </span>
-                  <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>
+                  <small>最近变更：{order.lastModifiedAt ? new Date(order.lastModifiedAt).toLocaleString() : '-'}</small>
                 </div>
+                {order.changes && order.changes.length > 0 && (
+                  <ul className="pending-change-details">
+                    {order.changes.map((change) => (
+                      <li key={change.id}>
+                        <div>
+                          <span>{new Date(change.createdAt).toLocaleString()}</span>
+                          <p>{describeOrderChange(change)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <button type="button" onClick={() => handleAcknowledge(order.id)}>
                   确认处理
                 </button>

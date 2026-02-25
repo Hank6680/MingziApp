@@ -20,6 +20,7 @@ export interface Product {
   price: number
   isAvailable: number
   stock?: number
+  notes?: string | null
 }
 
 export interface OrderItem {
@@ -38,6 +39,15 @@ export interface OrderItem {
   unitPrice?: number
 }
 
+export interface OrderChangeLog {
+  id: number
+  orderId: number
+  type: string
+  detail?: Record<string, unknown> | null
+  createdAt: string
+  readAt?: string | null
+}
+
 export interface Order {
   id: number
   customerId: number
@@ -45,7 +55,31 @@ export interface Order {
   status: string
   tripNumber?: string | null
   totalAmount?: number
-  items: OrderItem[]
+  pendingReview?: number
+  lastModifiedAt?: string | null
+  lastReviewedAt?: string | null
+  items?: OrderItem[]
+}
+
+export interface PendingOrderSummary extends Order {
+  pendingChangeCount?: number
+  changes?: OrderChangeLog[]
+}
+
+export interface InventoryLog {
+  id: number
+  productId: number
+  type: 'in' | 'return' | 'damage' | 'out'
+  quantity: number
+  logDate: string
+  remark?: string | null
+  partnerName?: string | null
+  reason?: string | null
+  refOrderId?: number | null
+  createdAt: string
+  productName?: string
+  unit?: string
+  warehouseType?: string
 }
 
 export interface PickingItem {

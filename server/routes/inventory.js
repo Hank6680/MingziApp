@@ -32,14 +32,91 @@ const dbAll = (sql, params = []) =>
 router.use(requireAuth)
 router.use(requireAdmin)
 
-router.get("/summary", async (_req, res, next) => {
+router.get("/summary", async (req, res, next) => {
   try {
-    const rows = await dbAll(
-      `SELECT id, name, unit, warehouseType, price, isAvailable, stock
-       FROM products
-       ORDER BY name ASC`
+    const limit = Number(req.query.limit ?? 50)
+    const offset = Number(req.query.offset ?? 0)
+    if (!Number.isFinite(limit) || limit < 1 || limit > 500) {
+      return next(httpError(400, "limit must be between 1 and 500", "VALIDATION_ERROR"))
+    }
+    if (!Number.isFinite(offset) || offset < 0) {
+      return next(httpError(400, "offset must be >= 0", "VALIDATION_ERROR"))
+    }
+
+    const { q, warehouseType } = req.query
+    const filters = []
+    const params = []
+
+    if (q) {
+      filters.push("name LIKE ?")
+      params.push(`%${q}%`)
+    }
+    if (warehouseType) {
+      filters.push("warehouseType = ?")
+      params.push(warehouseType)
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : ""
+
+    const countRow = await dbGet(
+      `SELECT COUNT(*) as total FROM products ${whereClause}`,
+      params
     )
-    return res.json({ items: rows })
+
+    const rows = await dbAll(
+      `SELECT id, name, unit, warehouseType, price, isAvailable, stock, notes
+       FROM products ${whereClause}
+       ORDER BY name ASC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    )
+
+    return res.json({ total: countRow?.total ?? 0, items: rows })
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.patch("/:productId", async (req, res, next) => {
+  const productId = Number(req.params.productId)
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return next(httpError(400, "Invalid productId", "VALIDATION_ERROR"))
+  }
+
+  const { stock, notes } = req.body || {}
+  const updates = []
+  const params = []
+
+  if (stock !== undefined) {
+    const normalizedStock = Number(stock)
+    if (!Number.isFinite(normalizedStock) || normalizedStock < 0) {
+      return next(httpError(400, "stock must be a non-negative number", "VALIDATION_ERROR"))
+    }
+    updates.push("stock = ?")
+    params.push(normalizedStock)
+  }
+
+  if (notes !== undefined) {
+    updates.push("notes = ?")
+    params.push(notes == null ? null : String(notes).slice(0, 500))
+  }
+
+  if (!updates.length) {
+    return next(httpError(400, "No fields to update", "VALIDATION_ERROR"))
+  }
+
+  params.push(productId)
+
+  try {
+    const result = await dbRun(`UPDATE products SET ${updates.join(", ")} WHERE id = ?`, params)
+    if (result.changes === 0) {
+      return next(httpError(404, "Product not found", "NOT_FOUND"))
+    }
+    const updated = await dbGet(
+      "SELECT id, name, unit, warehouseType, price, isAvailable, stock, notes FROM products WHERE id = ?",
+      [productId]
+    )
+    return res.json({ item: updated })
   } catch (err) {
     return next(err)
   }

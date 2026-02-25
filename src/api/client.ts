@@ -1,4 +1,12 @@
-import type { AuthResponse, Order, Product, PickingItem, OrderItem } from '../types'
+import type {
+  AuthResponse,
+  Order,
+  Product,
+  PickingItem,
+  OrderItem,
+  PendingOrderSummary,
+  OrderChangeLog,
+} from '../types'
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000'
@@ -36,6 +44,13 @@ export function login(username: string, password: string) {
   return request<AuthResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
+  })
+}
+
+export function getProductNames(token: string) {
+  return request<{ names: string[] }>('/api/products/names', {
+    method: 'GET',
+    token,
   })
 }
 
@@ -127,7 +142,7 @@ export function updateOrderTrip(orderId: number, tripNumber: string | null, toke
 }
 
 export function getPendingOrderChanges(token: string) {
-  return request<{ items: Order[] }>(`/api/orders/pending/changes`, {
+  return request<{ items: PendingOrderSummary[] }>(`/api/orders/pending/changes`, {
     method: 'GET',
     token,
   })
@@ -141,7 +156,7 @@ export function acknowledgeOrderChange(orderId: number, token: string) {
 }
 
 export function getPendingOrders(token: string) {
-  return request<{ items: Order[] }>(`/api/orders/pending/changes`, {
+  return request<{ items: PendingOrderSummary[] }>(`/api/orders/pending/changes`, {
     method: 'GET',
     token,
   })
@@ -150,6 +165,13 @@ export function getPendingOrders(token: string) {
 export function acknowledgeOrderReview(orderId: number, token: string) {
   return request<{ orderId: number }>(`/api/orders/${orderId}/review`, {
     method: 'PATCH',
+    token,
+  })
+}
+
+export function getOrderChangeLogs(orderId: number, token: string) {
+  return request<{ items: OrderChangeLog[] }>(`/api/orders/${orderId}/change-logs`, {
+    method: 'GET',
     token,
   })
 }
@@ -231,8 +253,25 @@ export interface InventoryDamagePayload {
   reason?: string
 }
 
-export function getInventorySummary(token: string) {
-  return request<{ items: Product[] }>(`/api/inventory/summary`, {
+export function updateInventoryStock(productId: number, payload: { stock?: number; notes?: string | null }, token: string) {
+  return request<{ item: Product }>(`/api/inventory/${productId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function getInventorySummary(
+  params: { limit?: number; offset?: number; q?: string; warehouseType?: string } = {},
+  token: string
+) {
+  const query = new URLSearchParams()
+  if (params.limit != null) query.set('limit', String(params.limit))
+  if (params.offset != null) query.set('offset', String(params.offset))
+  if (params.q) query.set('q', params.q)
+  if (params.warehouseType) query.set('warehouseType', params.warehouseType)
+  const search = query.toString() ? `?${query.toString()}` : ''
+  return request<{ total: number; items: Product[] }>(`/api/inventory/summary${search}`, {
     method: 'GET',
     token,
   })

@@ -21,7 +21,7 @@ export default function Navbar() {
             {user.role === 'admin' && (
               <>
                 <Link to="/picking">拣货任务</Link>
-                <Link to="/inventory">库存统计</Link>
+                <Link to="/inventory">库存管理</Link>
               </>
             )}
           </>

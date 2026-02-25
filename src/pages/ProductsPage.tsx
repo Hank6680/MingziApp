@@ -3,6 +3,7 @@ import {
   bulkDeleteProducts,
   createOrder,
   deleteProduct,
+  getProductNames,
   getProducts,
   updateProduct,
   updateProductAvailability,
@@ -10,6 +11,10 @@ import {
 import { useAuth } from '../context/AuthContext'
 import type { Product } from '../types'
 import { formatMoney } from '../utils/money'
+import Pagination from '../components/Pagination'
+import SearchableFilter from '../components/SearchableFilter'
+
+const PAGE_SIZE = 50
 
 interface OrderSummaryItem {
   productId: number
@@ -37,7 +42,11 @@ export default function ProductsPage() {
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ name: '', unit: '', warehouseType: '', price: '' })
   const [orderSummary, setOrderSummary] = useState<{ items: OrderSummaryItem[]; total: number } | null>(null)
+  const [page, setPage] = useState(0)
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [productNames, setProductNames] = useState<string[]>([])
 
+  const totalPages = Math.ceil(totalProducts / PAGE_SIZE)
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const unitOptions = ['kg', '箱', '袋', '件', '桶']
   const warehouseOptions = ['干', '鲜', '冻']
@@ -53,7 +62,7 @@ export default function ProductsPage() {
     return Array.from(new Set(list)).filter(Boolean)
   }
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (targetPage = page) => {
     if (!token) return
     try {
       setLoading(true)
@@ -62,12 +71,13 @@ export default function ProductsPage() {
         {
           q: query.trim() || undefined,
           available: available === 'all' ? undefined : available,
-          limit: 50,
-          offset: 0,
+          limit: PAGE_SIZE,
+          offset: targetPage * PAGE_SIZE,
         },
         token
       )
       setProducts(data.items)
+      setTotalProducts(data.total)
       setSelectedIds((prev) => {
         const next = new Set<number>()
         data.items.forEach((item) => {
@@ -83,13 +93,28 @@ export default function ProductsPage() {
   }
 
   useEffect(() => {
-    fetchProducts()
+    fetchProducts(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, page])
+
+  useEffect(() => {
+    if (token) getProductNames(token).then((d) => setProductNames(d.names)).catch(() => {})
   }, [token])
+
+  // 输入自动搜索（300ms 防抖）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(0)
+      fetchProducts(0)
+    }, 300)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, available])
 
   const handleSearch = (evt: FormEvent) => {
     evt.preventDefault()
-    fetchProducts()
+    setPage(0)
+    fetchProducts(0)
   }
 
   const handleQtyChange = (id: number, value: string) => {
@@ -265,7 +290,7 @@ export default function ProductsPage() {
     <div>
       <h1>商品列表</h1>
       <form className="filters" onSubmit={handleSearch}>
-        <input placeholder="搜索关键字" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <SearchableFilter names={productNames} value={query} onChange={setQuery} placeholder="搜索商品名..." />
         <select value={available} onChange={(e) => setAvailable(e.target.value as 'all' | '1' | '0')}>
           <option value="all">全部</option>
           <option value="1">只看在售</option>
@@ -426,6 +451,8 @@ export default function ProductsPage() {
             })}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
         <div className="submit-bar">
           <label>

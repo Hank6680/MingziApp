@@ -9,8 +9,8 @@ const parsePagination = (limitRaw, offsetRaw) => {
   const limit = Number(limitRaw ?? 20)
   const offset = Number(offsetRaw ?? 0)
 
-  if (!Number.isFinite(limit) || limit < 1 || limit > 100) {
-    throw httpError(400, "limit must be between 1 and 100", "VALIDATION_ERROR")
+  if (!Number.isFinite(limit) || limit < 1 || limit > 500) {
+    throw httpError(400, "limit must be between 1 and 500", "VALIDATION_ERROR")
   }
   if (!Number.isFinite(offset) || offset < 0) {
     throw httpError(400, "offset must be >= 0", "VALIDATION_ERROR")
@@ -18,6 +18,13 @@ const parsePagination = (limitRaw, offsetRaw) => {
 
   return { limit, offset }
 }
+
+router.get("/names", (req, res, next) => {
+  db.all("SELECT DISTINCT name FROM products ORDER BY name ASC", [], (err, rows) => {
+    if (err) return next(err)
+    return res.json({ names: rows.map((r) => r.name) })
+  })
+})
 
 router.get("/", (req, res, next) => {
   try {

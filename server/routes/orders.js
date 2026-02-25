@@ -119,24 +119,34 @@ const fetchOrderRow = async (orderId) => {
   return order
 }
 
-const markOrderPending = async (orderId, detail) => {
-  const stamp = new Date().toISOString()
-  await dbRun("UPDATE orders SET pendingReview = 1, lastModifiedAt = ? WHERE id = ?", [stamp, orderId])
-  if (detail) {
-    await dbRun(
-      "INSERT INTO order_change_logs (orderId, type, detail, createdAt) VALUES (?, 'change', ?, ?)",
-      [orderId, detail, stamp]
-    )
+const parseChangeDetail = (rawDetail) => {
+  if (!rawDetail) return null
+  try {
+    return JSON.parse(rawDetail)
+  } catch (err) {
+    return rawDetail
   }
 }
 
+const recordOrderChange = async (orderId, type, detail = null) => {
+  const stamp = new Date().toISOString()
+  const payload = detail == null ? null : JSON.stringify(detail)
+  await dbRun("UPDATE orders SET pendingReview = 1, lastModifiedAt = ? WHERE id = ?", [stamp, orderId])
+  await dbRun(
+    "INSERT INTO order_change_logs (orderId, type, detail, createdAt) VALUES (?, ?, ?, ?)",
+    [orderId, type, payload, stamp]
+  )
+}
+
 const clearOrderPending = async (orderId) => {
-  await dbRun("UPDATE orders SET pendingReview = 0 WHERE id = ?", [orderId])
+  const stamp = new Date().toISOString()
+  await dbRun("UPDATE orders SET pendingReview = 0, lastReviewedAt = ? WHERE id = ?", [stamp, orderId])
+  await dbRun("UPDATE order_change_logs SET readAt = ? WHERE orderId = ? AND readAt IS NULL", [stamp, orderId])
 }
 
 const fetchOrderItemDetail = async (itemId) => {
   const row = await dbGet(
-    `SELECT oi.*, o.status as orderStatus, o.customerId, o.deliveryDate, o.id as parentOrderId, p.unit, p.name as productName
+    `SELECT oi.*, o.status as orderStatus, o.customerId, o.deliveryDate, o.id as parentOrderId, p.unit, p.name as productName, p.price as productPrice
      FROM order_items oi
      JOIN orders o ON o.id = oi.orderId
      LEFT JOIN products p ON p.id = oi.productId
@@ -414,7 +424,15 @@ router.post("/", async (req, res, next) => {
       }
 
       const updatedTotal = await recalcOrderTotal(orderId)
-      await markOrderPending(orderId, JSON.stringify({ items }))
+      const changeItems = validatedItems.map((item) => ({
+        ...item,
+        productName: productMap[item.productId]?.name,
+        unit: productMap[item.productId]?.unit,
+      }))
+      await recordOrderChange(orderId, existingOrderId ? "merged_order_update" : "order_created", {
+        items: changeItems,
+        merged: Boolean(existingOrderId),
+      })
       await dbRun("COMMIT")
 
       return res.status(existingOrderId ? 200 : 201).json({ orderId, totalAmount: updatedTotal, merged: Boolean(existingOrderId) })
@@ -429,16 +447,62 @@ router.post("/", async (req, res, next) => {
 
 router.get("/pending/changes", requireAdmin, async (_req, res, next) => {
   try {
-    const rows = await dbAll(
-      `SELECT o.*, (
-          SELECT json_group_array(json_object('id', l.id, 'detail', l.detail, 'createdAt', l.createdAt))
-          FROM order_change_logs l WHERE l.orderId = o.id
-        ) as changes
-       FROM orders o
-       WHERE o.pendingReview = 1 AND o.status IN ('created','confirmed')
-       ORDER BY o.lastModifiedAt DESC`
+    const orders = await dbAll(
+      `SELECT * FROM orders
+       WHERE pendingReview = 1 AND status IN ('created','confirmed')
+       ORDER BY datetime(lastModifiedAt) DESC`
     )
-    return res.json({ items: rows })
+
+    if (!orders.length) {
+      return res.json({ items: [] })
+    }
+
+    const orderIds = orders.map((order) => order.id)
+    const placeholders = orderIds.map(() => "?").join(",")
+    const changeRows = await dbAll(
+      `SELECT * FROM order_change_logs
+       WHERE orderId IN (${placeholders}) AND (readAt IS NULL)
+       ORDER BY datetime(createdAt) DESC`,
+      orderIds
+    )
+
+    const grouped = changeRows.reduce((acc, row) => {
+      const parsedDetail = parseChangeDetail(row.detail)
+      const formatted = { ...row, detail: parsedDetail }
+      if (!acc[row.orderId]) acc[row.orderId] = []
+      acc[row.orderId].push(formatted)
+      return acc
+    }, {})
+
+    const items = orders.map((order) => ({
+      ...order,
+      pendingChangeCount: grouped[order.id]?.length ?? 0,
+      changes: grouped[order.id] ?? [],
+    }))
+
+    return res.json({ items })
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.get("/:id/change-logs", requireAdmin, async (req, res, next) => {
+  const orderId = Number(req.params.id)
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const exists = await dbGet("SELECT id FROM orders WHERE id = ?", [orderId])
+    if (!exists) {
+      return next(httpError(404, "Order not found", "NOT_FOUND"))
+    }
+    const logs = await dbAll(
+      `SELECT * FROM order_change_logs WHERE orderId = ? ORDER BY datetime(createdAt) DESC LIMIT 100`,
+      [orderId]
+    )
+    const items = logs.map((row) => ({ ...row, detail: parseChangeDetail(row.detail) }))
+    return res.json({ items })
   } catch (err) {
     return next(err)
   }
@@ -600,6 +664,17 @@ router.post("/:id/items", requireAdmin, async (req, res, next) => {
     )
 
     await recalcOrderTotal(targetOrderId)
+    await recordOrderChange(targetOrderId, "item_added", {
+      orderId,
+      redirectedOrderId,
+      item: {
+        productId: product.id,
+        productName: product.name,
+        unit: product.unit,
+        qtyOrdered: qty,
+        unitPrice: price,
+      },
+    })
     const order = await fetchOrderWithItems(targetOrderId)
     return res.status(201).json({ order, redirectedOrderId })
   } catch (err) {
@@ -625,11 +700,21 @@ router.patch("/items/:id", requireAdmin, async (req, res, next) => {
 
     const updates = []
     const params = []
+    const changeDetail = {
+      itemId,
+      productId: detail.productId,
+      productName: detail.productName,
+      unit: detail.unit,
+      before: {},
+      after: {},
+    }
 
     if (qtyOrdered != null) {
       const qty = normalizeQtyInput(detail.unit, Number(qtyOrdered))
       updates.push("qtyOrdered = ?")
       params.push(qty)
+      changeDetail.before.qtyOrdered = detail.qtyOrdered
+      changeDetail.after.qtyOrdered = qty
     }
 
     if (unitPrice != null) {
@@ -639,12 +724,15 @@ router.patch("/items/:id", requireAdmin, async (req, res, next) => {
       }
       updates.push("unitPrice = ?")
       params.push(price)
+      changeDetail.before.unitPrice = detail.unitPrice ?? detail.productPrice
+      changeDetail.after.unitPrice = price
     }
 
     params.push(itemId)
 
     await dbRun(`UPDATE order_items SET ${updates.join(", ")} WHERE id = ?`, params)
     await recalcOrderTotal(detail.parentOrderId)
+    await recordOrderChange(detail.parentOrderId, "item_updated", changeDetail)
     const order = await fetchOrderWithItems(detail.parentOrderId)
     return res.json(order)
   } catch (err) {
@@ -664,6 +752,14 @@ router.delete("/items/:id", requireAdmin, async (req, res, next) => {
 
     await dbRun("DELETE FROM order_items WHERE id = ?", [itemId])
     await recalcOrderTotal(detail.parentOrderId)
+    await recordOrderChange(detail.parentOrderId, "item_removed", {
+      itemId,
+      productId: detail.productId,
+      productName: detail.productName,
+      unit: detail.unit,
+      qtyOrdered: detail.qtyOrdered,
+      unitPrice: detail.unitPrice ?? detail.productPrice,
+    })
     const order = await fetchOrderWithItems(detail.parentOrderId)
     return res.json(order)
   } catch (err) {

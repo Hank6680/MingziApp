@@ -51,6 +51,7 @@ db.serialize(() => {
       type TEXT NOT NULL,
       detail TEXT,
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      readAt TEXT,
       FOREIGN KEY(orderId) REFERENCES orders(id)
     )
   `)
@@ -74,7 +75,8 @@ db.serialize(() => {
       tripNumber TEXT,
       stockDeducted INTEGER NOT NULL DEFAULT 0,
       pendingReview INTEGER NOT NULL DEFAULT 0,
-      lastModifiedAt TEXT
+      lastModifiedAt TEXT,
+      lastReviewedAt TEXT
     )
   `)
 
@@ -98,10 +100,13 @@ db.serialize(() => {
   ensureColumn("orders", "stockDeducted", "INTEGER NOT NULL", 0)
   ensureColumn("orders", "pendingReview", "INTEGER NOT NULL", 0)
   ensureColumn("orders", "lastModifiedAt", "TEXT")
+  ensureColumn("orders", "lastReviewedAt", "TEXT")
+  ensureColumn("products", "notes", "TEXT")
   ensureColumn("inventory_logs", "partnerName", "TEXT")
   ensureColumn("inventory_logs", "reason", "TEXT")
   ensureColumn("inventory_logs", "refOrderId", "INTEGER")
   ensureColumn("order_change_logs", "type", "TEXT")
+  ensureColumn("order_change_logs", "readAt", "TEXT")
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
     if (err) {

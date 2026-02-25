@@ -368,3 +368,82 @@ table th {
 .trip-input input {
   width: 120px;
 }
+
+.tab-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+}
+
+.tab-bar button {
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-weight: 500;
+  border-radius: 0;
+}
+
+.tab-bar button:hover {
+  color: #111827;
+}
+
+.tab-bar button.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.searchable-select {
+  position: relative;
+}
+
+.searchable-select input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.searchable-select-dropdown {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.4rem;
+  margin-top: 2px;
+  list-style: none;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.searchable-select-dropdown li {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.searchable-select-dropdown li:hover,
+.searchable-select-dropdown li.active {
+  background: #eef2ff;
+}
+
+.searchable-select-empty {
+  color: #9ca3af;
+  cursor: default !important;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 0;
+}
