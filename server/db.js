@@ -122,19 +122,18 @@ db.serialize(() => {
     }
 
     if (row?.count === 0) {
-      const seedProducts = [
-        { name: "冷冻牛肉", unit: "kg", warehouseType: "冻", price: 52.3, isAvailable: 1 },
-        { name: "生鲜鸡胸", unit: "kg", warehouseType: "鲜", price: 28.6, isAvailable: 1 },
-        { name: "矿泉水", unit: "箱", warehouseType: "干", price: 48, isAvailable: 1 },
-        { name: "食用油", unit: "桶", warehouseType: "干", price: 96.5, isAvailable: 0 },
-        { name: "调味酱", unit: "包", warehouseType: "干", price: 18.2, isAvailable: 1 },
-        { name: "冷冻虾仁", unit: "kg", warehouseType: "冻", price: 75.9, isAvailable: 1 },
-        { name: "鲜奶", unit: "箱", warehouseType: "鲜", price: 62, isAvailable: 1 },
-        { name: "果蔬拼盘", unit: "包", warehouseType: "鲜", price: 33.8, isAvailable: 0 },
-        { name: "高筋面粉", unit: "包", warehouseType: "干", price: 24.5, isAvailable: 1 },
-        { name: "冷藏酸奶", unit: "箱", warehouseType: "鲜", price: 54.2, isAvailable: 1 },
-        { name: "酱油", unit: "桶", warehouseType: "干", price: 88.9, isAvailable: 1 },
-      ]
+      // Load seed data from JSON file
+      let seedProducts
+      try {
+        const seedPath = path.join(__dirname, "seed-products.json")
+        seedProducts = JSON.parse(fs.readFileSync(seedPath, "utf-8"))
+      } catch (readErr) {
+        console.error("Failed to read seed-products.json, using minimal defaults", readErr.message)
+        seedProducts = [
+          { name: "冷冻牛肉", unit: "kg", warehouseType: "冻", price: 52.3, isAvailable: 1 },
+          { name: "矿泉水", unit: "箱", warehouseType: "干", price: 48, isAvailable: 1 },
+        ]
+      }
 
       const stmt = db.prepare(
         "INSERT INTO products (name, unit, warehouseType, price, isAvailable) VALUES (?, ?, ?, ?, ?)"
@@ -148,7 +147,7 @@ db.serialize(() => {
         if (seedErr) {
           console.error("Failed to seed products", seedErr)
         } else {
-          console.log("Seeded default products")
+          console.log(`Seeded ${seedProducts.length} products`)
         }
       })
     }
