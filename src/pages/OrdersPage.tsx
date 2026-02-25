@@ -12,7 +12,7 @@ import {
   updateOrderTrip,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Order, OrderChangeLog, PendingOrderSummary, Product } from '../types'
+import type { Order, OrderChangeLog, OrderItem, PendingOrderSummary, Product } from '../types'
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
 import { describeOrderChange } from '../utils/orderChanges'
@@ -31,14 +31,14 @@ const formatDeliveryDate = (value?: string | null) => {
   return date.toLocaleDateString()
 }
 
-const getLineTotals = (item: Order['items'][number]) => {
+const getLineTotals = (item: OrderItem) => {
   const qty = Number(item.qtyOrdered) || 0
   const unitPrice = Number(item.unitPrice ?? item.productPrice ?? 0)
   const lineTotal = Math.round(qty * unitPrice * 100) / 100
   return { unitPrice, lineTotal }
 }
 
-const computeOrderTotal = (items?: Order['items']) =>
+const computeOrderTotal = (items?: OrderItem[]) =>
   Math.round(
     (items ?? []).reduce((sum, item) => {
       const { lineTotal } = getLineTotals(item)
@@ -212,7 +212,7 @@ export default function OrdersPage() {
     }
   }
 
-  const handleSaveItem = async (item: Order['items'][number]) => {
+  const handleSaveItem = async (item: OrderItem) => {
     if (!token || !item.id) return
     try {
       const payload: { qtyOrdered?: number; unitPrice?: number } = {}
@@ -236,7 +236,7 @@ export default function OrdersPage() {
     }
   }
 
-  const handleDeleteItem = async (item: Order['items'][number]) => {
+  const handleDeleteItem = async (item: OrderItem) => {
     if (!token || !item.id) return
     if (!window.confirm(`确认删除商品「${item.productName ?? item.productId}」吗？`)) return
     try {

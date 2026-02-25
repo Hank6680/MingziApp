@@ -30,9 +30,7 @@
         "globals": "^16.5.0",
         "typescript": "~5.9.3",
         "typescript-eslint": "^8.48.0",
-        "vite": "^7.3.1",
-        "@types/jspdf": "2.0.0",
-        "@types/jspdf-autotable": "3.5.7"
+        "vite": "^7.3.1"
     },
     "description": "Personalized React + Vite starter for Aeron"
 }

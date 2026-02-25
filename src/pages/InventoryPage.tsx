@@ -1,5 +1,5 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, Dispatch, FormEvent, SetStateAction } from 'react'
 import {
   createDamageRecord,
   createInboundRecord,
@@ -132,7 +132,7 @@ export default function InventoryPage() {
     try {
       setLogsLoading(true)
       const data = await getInventoryLogs({ type: logsType, limit: 50 }, token)
-      setLogs((data.items as InventoryLogEntry[]) ?? [])
+      setLogs((data.items as unknown as InventoryLogEntry[]) ?? [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -193,10 +193,11 @@ export default function InventoryPage() {
   const warehouseTypes = ['全部', '干', '鲜', '冻']
 
   const createChangeHandler =
-    (setter: Dispatch<SetStateAction<Record<string, string>>>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (setter: Dispatch<SetStateAction<any>>) =>
     (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       const { name, value } = e.target
-      setter((prev) => ({ ...prev, [name]: value }))
+      setter((prev: Record<string, string>) => ({ ...prev, [name]: value }))
     }
 
   const handleChange = createChangeHandler(setForm)
