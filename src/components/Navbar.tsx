@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Navbar() {
@@ -16,12 +16,12 @@ export default function Navbar() {
       <nav>
         {user && (
           <>
-            <Link to="/products">商品下单</Link>
-            <Link to="/orders">订单列表</Link>
+            <NavLink to="/products">商品下单</NavLink>
+            <NavLink to="/orders">订单列表</NavLink>
             {user.role === 'admin' && (
               <>
-                <Link to="/picking">拣货任务</Link>
-                <Link to="/inventory">库存管理</Link>
+                <NavLink to="/picking">拣货任务</NavLink>
+                <NavLink to="/inventory">库存管理</NavLink>
               </>
             )}
           </>
@@ -33,7 +33,7 @@ export default function Navbar() {
           <button onClick={handleLogout}>退出</button>
         </div>
       ) : (
-        <Link to="/login">登录</Link>
+        <NavLink to="/login">登录</NavLink>
       )}
     </header>
   )

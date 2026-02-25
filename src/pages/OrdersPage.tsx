@@ -16,6 +16,7 @@ import type { Order, OrderChangeLog, PendingOrderSummary, Product } from '../typ
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
 import { describeOrderChange } from '../utils/orderChanges'
+import { OrderStatusBadge, WarehouseTypeBadge, PickingStatusBadge } from '../components/Badge'
 
 const STATUSES = ['created', 'confirmed', 'shipped', 'completed', 'cancelled']
 
@@ -311,9 +312,12 @@ export default function OrdersPage() {
   }
 
   return (
-    <div>
+    <div className="page-content">
       <div className="orders-header">
-        <h1>订单列表</h1>
+        <div className="page-header">
+          <h1>订单列表</h1>
+          <p>查看和管理所有订单</p>
+        </div>
         <button onClick={fetchOrders}>刷新</button>
       </div>
       {loading && <p>加载中…</p>}
@@ -399,7 +403,7 @@ export default function OrdersPage() {
                   </div>
                   <div className="order-controls">
                     <div>
-                      <p>状态：{order.status}</p>
+                      <p>状态：<OrderStatusBadge status={order.status} /></p>
                       {isAdmin && (
                         <select value={order.status} onChange={(e) => handleStatusChange(order.id, e.target.value)}>
                           {STATUSES.map((status) => (
@@ -471,7 +475,7 @@ export default function OrdersPage() {
                             item.qtyOrdered
                           )}
                         </td>
-                        <td>{item.productWarehouseType}</td>
+                        <td><WarehouseTypeBadge type={item.productWarehouseType} /></td>
                         <td>
                           {isRowEditable ? (
                             <input
@@ -486,13 +490,7 @@ export default function OrdersPage() {
                         </td>
                         <td>{formatMoney(lineTotal)}</td>
                         <td>
-                          {item.outOfStock
-                            ? '缺货'
-                            : item.picked
-                              ? '已拣'
-                              : item.status === 'picked'
-                                ? '已拣'
-                                : '待拣'}
+                          <PickingStatusBadge picked={item.picked} outOfStock={item.outOfStock} status={item.status} />
                         </td>
                         {isAdmin && editingOrderId === order.id && (
                           <td className="admin-actions">

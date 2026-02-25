@@ -13,6 +13,7 @@ import type { Product } from '../types'
 import { formatMoney } from '../utils/money'
 import Pagination from '../components/Pagination'
 import SearchableFilter from '../components/SearchableFilter'
+import { AvailabilityBadge, WarehouseTypeBadge } from '../components/Badge'
 
 const PAGE_SIZE = 50
 
@@ -287,8 +288,11 @@ export default function ProductsPage() {
   const isAdmin = user?.role === 'admin'
 
   return (
-    <div>
-      <h1>商品列表</h1>
+    <div className="page-content">
+      <div className="page-header">
+        <h1>商品列表</h1>
+        <p>浏览商品并下单</p>
+      </div>
       <form className="filters" onSubmit={handleSearch}>
         <SearchableFilter names={productNames} value={query} onChange={setQuery} placeholder="搜索商品名..." />
         <select value={available} onChange={(e) => setAvailable(e.target.value as 'all' | '1' | '0')}>
@@ -385,7 +389,7 @@ export default function ProductsPage() {
                         ))}
                       </select>
                     ) : (
-                      product.warehouseType
+                      <WarehouseTypeBadge type={product.warehouseType} />
                     )}
                   </td>
                   <td>
@@ -400,7 +404,7 @@ export default function ProductsPage() {
                       <>{formatMoney(product.price)}</>
                     )}
                   </td>
-                  <td>{product.isAvailable ? '在售' : '暂停'}</td>
+                  <td><AvailabilityBadge available={!!product.isAvailable} /></td>
                   <td>
                     <input
                       type="number"

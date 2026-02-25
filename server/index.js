@@ -14,7 +14,13 @@ const app = express()
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Allow requests with no origin (health checks, server-to-server)
+      if (!origin) return callback(null, true)
+      // Allow any .onrender.com subdomain + explicit whitelist
+      if (
+        allowedOrigins.includes(origin) ||
+        /\.onrender\.com$/.test(new URL(origin).hostname)
+      ) {
         return callback(null, true)
       }
       return callback(httpError(403, "Origin not allowed", "CORS_FORBIDDEN"))

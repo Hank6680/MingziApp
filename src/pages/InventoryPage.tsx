@@ -17,6 +17,7 @@ import SearchableSelect from '../components/SearchableSelect'
 import type { SelectOption } from '../components/SearchableSelect'
 import Pagination from '../components/Pagination'
 import SearchableFilter from '../components/SearchableFilter'
+import { WarehouseTypeBadge } from '../components/Badge'
 
 const PAGE_SIZE = 50
 
@@ -403,7 +404,7 @@ export default function InventoryPage() {
                 <tr key={item.id}>
                   <td>{item.name}</td>
                   <td>{item.unit}</td>
-                  <td>{item.warehouseType}</td>
+                  <td><WarehouseTypeBadge type={item.warehouseType} /></td>
                   <td>{formatMoney(item.price ?? 0)}</td>
                   {editingId === item.id ? (
                     <>
@@ -668,8 +669,11 @@ export default function InventoryPage() {
   )
 
   return (
-    <div>
-      <h1>库存管理</h1>
+    <div className="page-content">
+      <div className="page-header">
+        <h1>库存管理</h1>
+        <p>管理库存、入库、退货和货损</p>
+      </div>
       {message && <p className="hint">{message}</p>}
 
       <div className="tab-bar">

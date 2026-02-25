@@ -1,7 +1,14 @@
+const fs = require("fs")
 const path = require("path")
 const sqlite3 = require("sqlite3").verbose()
 
-const dbPath = path.join(__dirname, "data.db")
+// Use DATA_DIR env var for persistent disk on Render, fallback to local
+const dataDir = process.env.DATA_DIR || __dirname
+if (process.env.DATA_DIR && !fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true })
+}
+const dbPath = path.join(dataDir, "data.db")
+console.log(`SQLite database path: ${dbPath}`)
 const db = new sqlite3.Database(dbPath)
 
 const ensureColumn = (table, column, type, defaultValue) => {

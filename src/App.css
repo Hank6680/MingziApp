@@ -1,14 +1,55 @@
+/* ===== Design Tokens ===== */
 :root {
+  /* Colors */
+  --color-primary: #2d7a4f;
+  --color-primary-light: #e8f5ee;
+  --color-primary-dark: #1e5c3a;
+  --color-accent: #e8860c;
+  --color-accent-light: #fff4e5;
+  --color-danger: #dc2626;
+  --color-danger-light: #fef2f2;
+
+  /* Backgrounds */
+  --bg-page: #faf7f2;
+  --bg-card: #ffffff;
+  --bg-nav: #3b2f1e;
+  --bg-table-header: #f5f0e8;
+  --bg-table-alt: #fdfbf7;
+  --bg-table-hover: #f5f0e8;
+
+  /* Text */
+  --text-primary: #3d3225;
+  --text-secondary: #7a6e5d;
+  --text-muted: #a89b8c;
+  --text-on-nav: #f5f0e8;
+  --text-on-primary: #ffffff;
+
+  /* Borders */
+  --border-color: #e8dfd3;
+  --border-light: #f0ebe3;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(61, 50, 37, 0.06);
+  --shadow-md: 0 4px 12px rgba(61, 50, 37, 0.08);
+  --shadow-lg: 0 8px 24px rgba(61, 50, 37, 0.1);
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+
+  /* Font */
   font-family: 'Segoe UI', system-ui, sans-serif;
-  color: #111;
-  background-color: #f6f7f9;
+  color: var(--text-primary);
+  background-color: var(--bg-page);
 }
 
 body {
   margin: 0;
-  background-color: #f6f7f9;
+  background-color: var(--bg-page);
 }
 
+/* ===== App Shell ===== */
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -17,55 +58,157 @@ body {
 
 main {
   flex: 1;
-  padding: 1.5rem;
-  max-width: 1100px;
-  width: 100%;
-  margin: 0 auto;
 }
 
+/* ===== Page Content Wrapper ===== */
+.page-content {
+  max-width: 1140px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.page-header {
+  margin-bottom: 1.5rem;
+}
+
+.page-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* ===== Navbar ===== */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e0e6ed;
+  padding: 0 1.5rem;
+  height: 56px;
+  background-color: var(--bg-nav);
+  border-bottom: none;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 0;
 }
 
 .app-header a {
-  margin-right: 1rem;
+  position: relative;
+  margin-right: 0;
+  padding: 0 1rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
   text-decoration: none;
-  color: #374151;
+  color: var(--text-on-nav);
+  opacity: 0.8;
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
 }
 
 .app-header a:hover {
-  color: #111827;
+  opacity: 1;
+}
+
+.app-header a.active {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.app-header a.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 3px;
+  background: var(--color-accent);
+  border-radius: 3px 3px 0 0;
 }
 
 .brand {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
+  color: #fff;
+  letter-spacing: 0.02em;
 }
 
 .user-box {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  color: var(--text-on-nav);
+}
+
+.user-box span {
+  opacity: 0.9;
+  font-size: 0.9rem;
 }
 
 .user-box button {
-  padding: 0.35rem 0.9rem;
+  padding: 0.3rem 0.85rem;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-on-nav);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
+.user-box button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ===== Login Page ===== */
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #faf7f2 0%, #e8f5ee 50%, #fff4e5 100%);
+  padding: 1rem;
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.login-brand h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.login-brand p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* ===== Card ===== */
 .card {
-  background: #fff;
+  background: var(--bg-card);
   padding: 2rem;
-  border-radius: 0.75rem;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   max-width: 420px;
-  margin: 2rem auto;
+  width: 100%;
+  margin: 0 auto;
+  border: 1px solid var(--border-light);
 }
 
+/* ===== Form ===== */
 .form {
   display: flex;
   flex-direction: column;
@@ -76,47 +219,84 @@ label {
   display: flex;
   flex-direction: column;
   font-size: 0.95rem;
-  color: #374151;
+  color: var(--text-primary);
+  gap: 0.3rem;
 }
 
 input,
 select,
-textarea,
-button {
+textarea {
   font: inherit;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.4rem;
-  border: 1px solid #d1d5db;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(45, 122, 79, 0.12);
 }
 
 textarea {
   resize: vertical;
 }
 
+/* ===== Buttons ===== */
 button {
-  background-color: #2563eb;
-  color: #fff;
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s, box-shadow 0.2s;
+  background-color: var(--color-primary);
+  color: var(--text-on-primary);
+}
+
+button:hover {
+  background-color: var(--color-primary-dark);
 }
 
 button.ghost {
-  background-color: #e5e7eb;
-  color: #111827;
+  background-color: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--border-color);
 }
 
 button.ghost:hover {
-  background-color: #cbd5f5;
+  background-color: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 button.danger {
-  background-color: #f97316;
+  background-color: var(--color-danger);
+  color: #fff;
 }
 
 button.danger:hover {
-  background-color: #ea580c;
+  background-color: #b91c1c;
 }
 
+button:disabled {
+  background-color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+button.ghost:disabled {
+  background-color: transparent;
+  color: var(--text-muted);
+  border-color: var(--border-light);
+}
+
+/* ===== Admin Toolbar ===== */
 .admin-actions {
   display: flex;
   flex-wrap: wrap;
@@ -129,47 +309,73 @@ button.danger:hover {
   gap: 1rem;
   margin: 0.5rem 0 1rem;
   padding: 0.75rem 1rem;
-  background: #eef2ff;
-  border-radius: 0.75rem;
+  background: var(--color-accent-light);
+  border: 1px solid #f0d9b5;
+  border-radius: var(--radius-md);
 }
 
 .admin-toolbar .hint {
   margin-left: auto;
 }
 
-button:disabled {
-  background-color: #94a3b8;
-  cursor: not-allowed;
-}
-
+/* ===== Filters ===== */
 .filters {
   display: flex;
   gap: 0.75rem;
   align-items: center;
   margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
 }
 
+/* ===== Tables ===== */
 .products-form table,
 .order-card table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
   overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
 table th,
 table td {
   padding: 0.75rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-light);
   text-align: left;
 }
 
 table th {
-  background-color: #f3f4f6;
+  background-color: var(--bg-table-header);
   font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9rem;
 }
 
+table tbody tr:nth-child(even) {
+  background-color: var(--bg-table-alt);
+}
+
+table tbody tr:hover {
+  background-color: var(--bg-table-hover);
+}
+
+/* ===== Table Wrapper ===== */
+.table-wrapper {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+}
+
+/* ===== Inventory ===== */
 .inventory-grid {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
@@ -183,10 +389,11 @@ table th {
 }
 
 .inventory-card {
-  background: #fff;
-  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
   padding: 1.25rem;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .inventory-form {
@@ -203,30 +410,33 @@ table th {
   margin-bottom: 1rem;
 }
 
+/* ===== Log Tabs ===== */
 .log-tabs {
   display: flex;
   gap: 0.5rem;
 }
 
 .log-tabs button {
-  border: 1px solid #d1d5db;
-  background: #fff;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
   padding: 0.35rem 0.85rem;
   border-radius: 999px;
   cursor: pointer;
+  color: var(--text-secondary);
 }
 
 .log-tabs button.active {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+  border-color: var(--color-primary);
 }
 
+/* ===== Pending Changes ===== */
 .pending-changes {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  background: var(--color-accent-light);
+  border: 1px solid #f0d9b5;
   padding: 1rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   margin-bottom: 1rem;
 }
 
@@ -253,32 +463,32 @@ table th {
   gap: 1rem;
 }
 
-.table-wrapper {
-  background: #fff;
-  border-radius: 0.75rem;
-  overflow-x: auto;
-}
-
+/* ===== Order Summary ===== */
 .order-summary {
   margin-top: 1.5rem;
-  background: #fff;
-  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
   padding: 1.5rem;
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
 .order-summary h2 {
   margin-top: 0;
+  color: var(--text-primary);
 }
 
 .order-summary-total {
   text-align: right;
   font-weight: 600;
   margin-top: 1rem;
+  color: var(--color-primary);
+  font-size: 1.1rem;
 }
 
+/* ===== Utility Classes ===== */
 .muted {
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .submit-bar {
@@ -287,20 +497,22 @@ table th {
   align-items: center;
   gap: 1rem;
   margin-top: 1rem;
-  background: #fff;
+  background: var(--bg-card);
   padding: 1rem;
-  border-radius: 0.75rem;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .error-text {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .hint {
-  color: #2563eb;
+  color: var(--color-primary);
 }
 
+/* ===== Orders ===== */
 .orders-header {
   display: flex;
   justify-content: space-between;
@@ -315,22 +527,24 @@ table th {
 }
 
 .order-card {
-  background: #fff;
-  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
   padding: 1rem;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .order-price-summary {
   text-align: right;
   margin-top: 0.75rem;
   font-weight: 600;
+  color: var(--color-primary);
 }
 
 .order-add-item {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border-light);
 }
 
 .order-add-form {
@@ -369,17 +583,18 @@ table th {
   width: 120px;
 }
 
+/* ===== Tab Bar ===== */
 .tab-bar {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1.25rem;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--border-light);
   padding-bottom: 0.5rem;
 }
 
 .tab-bar button {
   background: transparent;
-  color: #6b7280;
+  color: var(--text-secondary);
   border: none;
   border-bottom: 2px solid transparent;
   padding: 0.5rem 1rem;
@@ -390,14 +605,15 @@ table th {
 }
 
 .tab-bar button:hover {
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .tab-bar button.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
 }
 
+/* ===== Searchable Select ===== */
 .searchable-select {
   position: relative;
 }
@@ -414,13 +630,13 @@ table th {
   right: 0;
   max-height: 200px;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 0.4rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   margin-top: 2px;
   list-style: none;
   padding: 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .searchable-select-dropdown li {
@@ -431,14 +647,15 @@ table th {
 
 .searchable-select-dropdown li:hover,
 .searchable-select-dropdown li.active {
-  background: #eef2ff;
+  background: var(--color-primary-light);
 }
 
 .searchable-select-empty {
-  color: #9ca3af;
+  color: var(--text-muted);
   cursor: default !important;
 }
 
+/* ===== Pagination ===== */
 .pagination {
   display: flex;
   justify-content: center;
@@ -446,4 +663,153 @@ table th {
   gap: 1rem;
   margin-top: 1rem;
   padding: 0.75rem 0;
+}
+
+.pagination button {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.pagination button:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+/* ===== Badges ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* Order status badges */
+.badge-created    { background: #dbeafe; color: #1e40af; }
+.badge-confirmed  { background: #dcfce7; color: #166534; }
+.badge-shipped    { background: #ffedd5; color: #9a3412; }
+.badge-completed  { background: #d1fae5; color: #065f46; }
+.badge-cancelled  { background: #fee2e2; color: #991b1b; }
+
+/* Warehouse type badges */
+.badge-wh-dry     { background: #fef3c7; color: #92400e; }
+.badge-wh-fresh   { background: #dcfce7; color: #166534; }
+.badge-wh-frozen  { background: #dbeafe; color: #1e40af; }
+
+/* Availability badges */
+.badge-available   { background: #dcfce7; color: #166534; }
+.badge-unavailable { background: #f3f4f6; color: #6b7280; }
+
+/* Picking status badges */
+.badge-pending-pick { background: #ffedd5; color: #9a3412; }
+.badge-picked       { background: #dcfce7; color: #166534; }
+.badge-out-of-stock { background: #fee2e2; color: #991b1b; }
+
+/* Warning badge (used inline) */
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+  margin-left: 0.5rem;
+}
+
+/* ===== Pending Changes Panel ===== */
+.pending-changes-panel {
+  background: var(--color-accent-light);
+  border: 1px solid #f0d9b5;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.pending-changes-panel .pending-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.pending-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pending-orders-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pending-order-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.pending-order-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pending-change-details {
+  list-style: none;
+  padding: 0.5rem 0 0 1rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.order-head-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.order-change-logs {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-table-alt);
+  border-radius: var(--radius-sm);
+}
+
+.order-change-logs h4 {
+  margin: 0 0 0.5rem;
+}
+
+.order-change-logs ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.order-change-logs li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ===== Picking Print Area ===== */
+.picking-print-area {
+  margin-top: 1rem;
+}
+
+.print-header {
+  margin-bottom: 0.75rem;
+}
+
+.print-header h2 {
+  margin: 0;
+}
+
+.picking-table-wrapper {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }

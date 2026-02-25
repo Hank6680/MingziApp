@@ -5,6 +5,7 @@ import { acknowledgeOrderChange, getPendingOrderChanges, getPickingItems, update
 import { useAuth } from '../context/AuthContext'
 import type { PendingOrderSummary, PickingItem } from '../types'
 import { describeOrderChange } from '../utils/orderChanges'
+import { WarehouseTypeBadge, PickingStatusBadge } from '../components/Badge'
 
 const warehouseOptions = ['全部', '干', '鲜', '冻']
 
@@ -120,8 +121,11 @@ export default function PickingPage() {
   }
 
   return (
-    <div>
-      <h1>拣货任务</h1>
+    <div className="page-content">
+      <div className="page-header">
+        <h1>拣货任务</h1>
+        <p>按车次和仓储类型拣货</p>
+      </div>
       {pendingOrders.length > 0 && (
         <div className="pending-changes">
           <div className="pending-header">
@@ -203,18 +207,12 @@ export default function PickingPage() {
                     <td>#{item.orderId}</td>
                     <td>{item.customerId ?? '-'}</td>
                     <td>{item.productName}</td>
-                    <td>{item.warehouseType}</td>
+                    <td><WarehouseTypeBadge type={item.warehouseType} /></td>
                     <td>
                       {item.qtyOrdered} {item.productUnit}
                     </td>
                     <td>
-                      {item.outOfStock
-                        ? '缺货'
-                        : item.picked
-                          ? '已拣'
-                          : item.status === 'created'
-                            ? '待拣'
-                            : item.status}
+                      <PickingStatusBadge picked={item.picked} outOfStock={item.outOfStock} status={item.status} />
                     </td>
                     <td className="admin-actions">
                       <button type="button" onClick={() => handleMark(item, 'picked')}>

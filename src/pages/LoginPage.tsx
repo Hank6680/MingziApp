@@ -25,28 +25,33 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="card">
-      <h1>登录 Mingzi Supply</h1>
-      <form onSubmit={handleSubmit} className="form">
-        <label>
-          用户名
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-        </label>
-        <label>
-          密码
-          <input
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {error && <p className="error-text">{error}</p>}
-        <button type="submit" disabled={loading}>
-          {loading ? '登录中…' : '登录'}
-        </button>
-        <p className="hint">普通用户：demo/demo123 · 管理员：admin/admin123</p>
-      </form>
+    <div className="login-wrapper">
+      <div className="card">
+        <div className="login-brand">
+          <h1>Mingzi Supply</h1>
+          <p>食材配送订货平台</p>
+        </div>
+        <form onSubmit={handleSubmit} className="form">
+          <label>
+            用户名
+            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          </label>
+          <label>
+            密码
+            <input
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          {error && <p className="error-text">{error}</p>}
+          <button type="submit" disabled={loading}>
+            {loading ? '登录中…' : '登录'}
+          </button>
+          <p className="hint">普通用户：demo/demo123 · 管理员：admin/admin123</p>
+        </form>
+      </div>
     </div>
   )
 }
