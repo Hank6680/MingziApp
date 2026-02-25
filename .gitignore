@@ -15,6 +15,9 @@ dist-ssr
 # SQLite database (auto-created via seed)
 server/data.db
 
+# Backup files (contain business data)
+server/backups/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

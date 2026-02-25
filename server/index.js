@@ -28,7 +28,7 @@ app.use(
     credentials: true,
   })
 )
-app.use(express.json())
+app.use(express.json({ limit: "10mb" }))
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() })
@@ -38,6 +38,7 @@ app.use("/api/products", require("./routes/products"))
 app.use("/api/orders", require("./routes/orders"))
 app.use("/api/auth", require("./routes/auth"))
 app.use("/api/inventory", require("./routes/inventory"))
+app.use("/api/backup", require("./routes/backup"))
 
 app.use((req, _res, next) => {
   next(httpError(404, `Route ${req.method} ${req.originalUrl} not found`, "NOT_FOUND"))
