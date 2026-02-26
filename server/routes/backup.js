@@ -20,19 +20,29 @@ const run = (sql, params = []) =>
 // GET /api/backup/export — admin only, returns full database dump
 router.get("/export", requireAuth, requireAdmin, async (_req, res, next) => {
   try {
-    const [products, users, orders, orderItems, orderChangeLogs, inventoryLogs] =
-      await Promise.all([
+    const [
+      products, users, orders, orderItems, orderChangeLogs, inventoryLogs,
+      suppliers, receivingBatches, receivingBatchItems, supplierInvoices, supplierInvoiceItems,
+    ] = await Promise.all([
         allRows("SELECT * FROM products"),
         allRows("SELECT * FROM users"),
         allRows("SELECT * FROM orders"),
         allRows("SELECT * FROM order_items"),
         allRows("SELECT * FROM order_change_logs"),
         allRows("SELECT * FROM inventory_logs"),
+        allRows("SELECT * FROM suppliers"),
+        allRows("SELECT * FROM receiving_batches"),
+        allRows("SELECT * FROM receiving_batch_items"),
+        allRows("SELECT * FROM supplier_invoices"),
+        allRows("SELECT * FROM supplier_invoice_items"),
       ])
 
     res.json({
       exportedAt: new Date().toISOString(),
-      tables: { products, users, orders, orderItems, orderChangeLogs, inventoryLogs },
+      tables: {
+        products, users, orders, orderItems, orderChangeLogs, inventoryLogs,
+        suppliers, receivingBatches, receivingBatchItems, supplierInvoices, supplierInvoiceItems,
+      },
     })
   } catch (err) {
     next(err)
@@ -81,7 +91,24 @@ router.post("/import", requireAuth, requireAdmin, async (req, res, next) => {
     ])
     results.inventoryLogs = await importTable("inventory_logs", tables.inventoryLogs, [
       "id", "productId", "type", "quantity", "logDate", "remark",
-      "partnerName", "reason", "refOrderId", "createdAt",
+      "partnerName", "reason", "refOrderId", "createdAt", "batchId",
+    ])
+    results.suppliers = await importTable("suppliers", tables.suppliers, [
+      "id", "name", "contact", "notes", "createdAt",
+    ])
+    results.receivingBatches = await importTable("receiving_batches", tables.receivingBatches, [
+      "id", "batchNo", "supplierId", "receivedDate", "notes", "reconcileStatus", "createdAt",
+    ])
+    results.receivingBatchItems = await importTable("receiving_batch_items", tables.receivingBatchItems, [
+      "id", "batchId", "productId", "productName", "quantity", "createdAt",
+    ])
+    results.supplierInvoices = await importTable("supplier_invoices", tables.supplierInvoices, [
+      "id", "invoiceNo", "supplierId", "invoiceDate", "periodStart", "periodEnd",
+      "totalAmount", "notes", "status", "createdAt",
+    ])
+    results.supplierInvoiceItems = await importTable("supplier_invoice_items", tables.supplierInvoiceItems, [
+      "id", "invoiceId", "productName", "productId", "quantity", "unitPrice",
+      "amount", "matchedQty", "matchStatus", "discrepancyNotes",
     ])
 
     res.json({ ok: true, imported: results })

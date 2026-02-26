@@ -7,6 +7,7 @@ import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
 import PickingPage from './pages/PickingPage'
 import InventoryPage from './pages/InventoryPage'
+import ReconciliationPage from './pages/ReconciliationPage'
 import './App.css'
 
 export default function App() {
@@ -47,6 +48,14 @@ export default function App() {
             element={
               <ProtectedRoute roles={['admin']}>
                 <InventoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reconciliation"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <ReconciliationPage />
               </ProtectedRoute>
             }
           />

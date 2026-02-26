@@ -6,6 +6,10 @@ import type {
   OrderItem,
   PendingOrderSummary,
   OrderChangeLog,
+  Supplier,
+  ReceivingBatch,
+  SupplierInvoice,
+  SupplierInvoiceItem,
 } from '../types'
 
 const API_BASE =
@@ -312,6 +316,135 @@ export function getInventoryLogs(params: { type?: string; limit?: number } = {},
   const suffix = search.toString() ? `?${search.toString()}` : ''
   return request<{ items: Array<Record<string, unknown>> }>(`/api/inventory/logs${suffix}`, {
     method: 'GET',
+    token,
+  })
+}
+
+// --- Suppliers ---
+
+export function getSuppliers(token: string) {
+  return request<{ items: Supplier[] }>('/api/suppliers', { method: 'GET', token })
+}
+
+export function createSupplier(payload: { name: string; contact?: string; notes?: string }, token: string) {
+  return request<{ item: Supplier }>('/api/suppliers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function updateSupplier(id: number, payload: Partial<{ name: string; contact: string; notes: string }>, token: string) {
+  return request<{ item: Supplier }>(`/api/suppliers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function deleteSupplier(id: number, token: string) {
+  return request<void>(`/api/suppliers/${id}`, { method: 'DELETE', token })
+}
+
+// --- Receiving Batches ---
+
+export interface CreateBatchPayload {
+  supplierId: number
+  receivedDate: string
+  notes?: string
+  items: { productId: number; quantity: number }[]
+}
+
+export function createReceivingBatch(payload: CreateBatchPayload, token: string) {
+  return request<{ batch: ReceivingBatch }>('/api/receiving-batches', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function getReceivingBatches(
+  params: { supplierId?: number; startDate?: string; endDate?: string; reconcileStatus?: string; limit?: number; offset?: number } = {},
+  token: string
+) {
+  const q = new URLSearchParams()
+  if (params.supplierId) q.set('supplierId', String(params.supplierId))
+  if (params.startDate) q.set('startDate', params.startDate)
+  if (params.endDate) q.set('endDate', params.endDate)
+  if (params.reconcileStatus) q.set('reconcileStatus', params.reconcileStatus)
+  if (params.limit != null) q.set('limit', String(params.limit))
+  if (params.offset != null) q.set('offset', String(params.offset))
+  const search = q.toString() ? `?${q.toString()}` : ''
+  return request<{ total: number; items: ReceivingBatch[] }>(`/api/receiving-batches${search}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function getReceivingBatch(id: number, token: string) {
+  return request<{ batch: ReceivingBatch }>(`/api/receiving-batches/${id}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+// --- Supplier Invoices ---
+
+export function importSupplierInvoice(formData: FormData, token: string): Promise<{
+  invoice: SupplierInvoice
+  items: SupplierInvoiceItem[]
+  summary: { total: number; autoConfirmed: number; needReview: number; unmatched: number }
+}> {
+  return fetch(`${API_BASE}/api/supplier-invoices/import`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error?.message || '上传失败')
+    return data
+  })
+}
+
+export function getSupplierInvoices(
+  params: { supplierId?: number; status?: string; limit?: number; offset?: number } = {},
+  token: string
+) {
+  const q = new URLSearchParams()
+  if (params.supplierId) q.set('supplierId', String(params.supplierId))
+  if (params.status) q.set('status', params.status)
+  if (params.limit != null) q.set('limit', String(params.limit))
+  if (params.offset != null) q.set('offset', String(params.offset))
+  const search = q.toString() ? `?${q.toString()}` : ''
+  return request<{ total: number; items: SupplierInvoice[] }>(`/api/supplier-invoices${search}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function getSupplierInvoice(id: number, token: string) {
+  return request<{ invoice: SupplierInvoice }>(`/api/supplier-invoices/${id}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function updateInvoiceItem(
+  invoiceId: number,
+  itemId: number,
+  payload: { matchStatus?: string; productId?: number | null; discrepancyNotes?: string },
+  token: string
+) {
+  return request<{ item: SupplierInvoiceItem }>(`/api/supplier-invoices/${invoiceId}/items/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function confirmInvoice(invoiceId: number, token: string) {
+  return request<{ invoice: SupplierInvoice }>(`/api/supplier-invoices/${invoiceId}/confirm`, {
+    method: 'POST',
     token,
   })
 }

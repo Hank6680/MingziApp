@@ -97,3 +97,74 @@ export interface PickingItem {
   warehouseType: string
   price: number
 }
+
+// --- Suppliers & Receiving Batches ---
+
+export interface Supplier {
+  id: number
+  name: string
+  contact?: string | null
+  notes?: string | null
+  createdAt: string
+}
+
+export interface ReceivingBatchItem {
+  id: number
+  batchId: number
+  productId: number
+  productName: string
+  quantity: number
+  unit?: string
+  warehouseType?: string
+  createdAt: string
+}
+
+export interface ReceivingBatch {
+  id: number
+  batchNo: string
+  supplierId: number
+  supplierName?: string
+  receivedDate: string
+  notes?: string | null
+  reconcileStatus: 'pending' | 'reconciled' | 'discrepancy'
+  createdAt: string
+  itemCount?: number
+  totalQty?: number
+  items?: ReceivingBatchItem[]
+}
+
+export type InvoiceMatchStatus = 'auto_confirmed' | 'manual_confirmed' | 'need_review' | 'unmatched' | 'ignored'
+
+export interface SupplierInvoiceItem {
+  id: number
+  invoiceId: number
+  productName: string
+  productId: number | null
+  quantity: number
+  unitPrice: number
+  amount: number
+  matchedQty: number | null
+  matchStatus: InvoiceMatchStatus
+  discrepancyNotes?: string | null
+  unit?: string
+  warehouseType?: string
+}
+
+export interface SupplierInvoice {
+  id: number
+  invoiceNo?: string | null
+  supplierId: number
+  supplierName?: string
+  invoiceDate?: string
+  periodStart?: string | null
+  periodEnd?: string | null
+  totalAmount: number | null
+  notes?: string | null
+  status: 'pending' | 'confirmed' | 'partial'
+  createdAt: string
+  itemCount?: number
+  autoConfirmedCount?: number
+  needReviewCount?: number
+  unmatchedCount?: number
+  items?: SupplierInvoiceItem[]
+}

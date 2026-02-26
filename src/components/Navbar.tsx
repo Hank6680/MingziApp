@@ -22,6 +22,7 @@ export default function Navbar() {
               <>
                 <NavLink to="/picking">拣货任务</NavLink>
                 <NavLink to="/inventory">库存管理</NavLink>
+                <NavLink to="/reconciliation">供应商对账</NavLink>
               </>
             )}
           </>

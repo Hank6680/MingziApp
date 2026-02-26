@@ -115,6 +115,78 @@ db.serialize(() => {
   ensureColumn("order_change_logs", "type", "TEXT")
   ensureColumn("order_change_logs", "readAt", "TEXT")
 
+  // --- Receiving batches & supplier reconciliation tables ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      contact TEXT,
+      notes TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS receiving_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batchNo TEXT NOT NULL UNIQUE,
+      supplierId INTEGER NOT NULL,
+      receivedDate TEXT NOT NULL,
+      notes TEXT,
+      reconcileStatus TEXT NOT NULL DEFAULT 'pending',
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(supplierId) REFERENCES suppliers(id)
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS receiving_batch_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batchId INTEGER NOT NULL,
+      productId INTEGER NOT NULL,
+      productName TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(batchId) REFERENCES receiving_batches(id),
+      FOREIGN KEY(productId) REFERENCES products(id)
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS supplier_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoiceNo TEXT,
+      supplierId INTEGER NOT NULL,
+      invoiceDate TEXT,
+      periodStart TEXT,
+      periodEnd TEXT,
+      totalAmount REAL,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(supplierId) REFERENCES suppliers(id)
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS supplier_invoice_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoiceId INTEGER NOT NULL,
+      productName TEXT,
+      productId INTEGER,
+      quantity REAL,
+      unitPrice REAL,
+      amount REAL,
+      matchedQty REAL,
+      matchStatus TEXT NOT NULL DEFAULT 'unmatched',
+      discrepancyNotes TEXT,
+      FOREIGN KEY(invoiceId) REFERENCES supplier_invoices(id),
+      FOREIGN KEY(productId) REFERENCES products(id)
+    )
+  `)
+
+  ensureColumn("inventory_logs", "batchId", "INTEGER")
+
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
     if (err) {
       console.error("Failed to count products", err)

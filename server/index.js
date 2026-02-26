@@ -38,6 +38,9 @@ app.use("/api/products", require("./routes/products"))
 app.use("/api/orders", require("./routes/orders"))
 app.use("/api/auth", require("./routes/auth"))
 app.use("/api/inventory", require("./routes/inventory"))
+app.use("/api/suppliers", require("./routes/suppliers"))
+app.use("/api/receiving-batches", require("./routes/receiving-batches"))
+app.use("/api/supplier-invoices", require("./routes/supplier-invoices"))
 app.use("/api/backup", require("./routes/backup"))
 
 app.use((req, _res, next) => {

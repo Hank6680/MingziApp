@@ -2,22 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, Dispatch, FormEvent, SetStateAction } from 'react'
 import {
   createDamageRecord,
-  createInboundRecord,
+  createReceivingBatch,
   createReturnRecord,
   getInventoryLogs,
   getInventorySummary,
   getProductNames,
+  getReceivingBatches,
+  getSuppliers,
   updateInventoryStock,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Product } from '../types'
+import type { Product, Supplier, ReceivingBatch } from '../types'
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
 import SearchableSelect from '../components/SearchableSelect'
 import type { SelectOption } from '../components/SearchableSelect'
 import Pagination from '../components/Pagination'
 import SearchableFilter from '../components/SearchableFilter'
-import { WarehouseTypeBadge } from '../components/Badge'
+import { WarehouseTypeBadge, ReconcileStatusBadge } from '../components/Badge'
+import SuppliersModal from '../components/SuppliersModal'
 
 const PAGE_SIZE = 50
 
@@ -30,12 +33,12 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'damage', label: '货损' },
 ]
 
-const createInboundForm = () => ({
-  productId: '',
-  quantity: '',
-  logDate: '',
-  remark: '',
-})
+interface BatchItemRow {
+  productId: string
+  quantity: string
+}
+
+const createEmptyBatchItem = (): BatchItemRow => ({ productId: '', quantity: '' })
 
 const createReturnForm = () => ({
   productId: '',
@@ -70,7 +73,13 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [form, setForm] = useState(createInboundForm)
+  const [batchSupplierId, setBatchSupplierId] = useState('')
+  const [batchDate, setBatchDate] = useState('')
+  const [batchNotes, setBatchNotes] = useState('')
+  const [batchItems, setBatchItems] = useState<BatchItemRow[]>([createEmptyBatchItem()])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [recentBatches, setRecentBatches] = useState<ReceivingBatch[]>([])
+  const [suppliersModalOpen, setSuppliersModalOpen] = useState(false)
   const [returnForm, setReturnForm] = useState(createReturnForm)
   const [damageForm, setDamageForm] = useState(createDamageForm)
   const [submitting, setSubmitting] = useState(false)
@@ -159,10 +168,28 @@ export default function InventoryPage() {
     fetchInventory()
   }, [fetchInventory])
 
+  const fetchSuppliersList = useCallback(async () => {
+    if (!token) return
+    try {
+      const data = await getSuppliers(token)
+      setSuppliers(data.items)
+    } catch { /* best-effort */ }
+  }, [token])
+
+  const fetchRecentBatches = useCallback(async () => {
+    if (!token) return
+    try {
+      const data = await getReceivingBatches({ limit: 10 }, token)
+      setRecentBatches(data.items)
+    } catch { /* best-effort */ }
+  }, [token])
+
   useEffect(() => {
     fetchAllProducts()
+    fetchSuppliersList()
+    fetchRecentBatches()
     if (token) getProductNames(token).then((d) => setProductNames(d.names)).catch(() => {})
-  }, [fetchAllProducts, token])
+  }, [fetchAllProducts, fetchSuppliersList, fetchRecentBatches, token])
 
   useEffect(() => {
     fetchLogs()
@@ -200,7 +227,6 @@ export default function InventoryPage() {
       setter((prev: Record<string, string>) => ({ ...prev, [name]: value }))
     }
 
-  const handleChange = createChangeHandler(setForm)
   const handleReturnChange = createChangeHandler(setReturnForm)
   const handleDamageChange = createChangeHandler(setDamageForm)
 
@@ -238,36 +264,44 @@ export default function InventoryPage() {
     }
   }
 
+  const addBatchItem = () => setBatchItems((prev) => [...prev, createEmptyBatchItem()])
+
+  const removeBatchItem = (idx: number) => {
+    setBatchItems((prev) => prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx))
+  }
+
+  const updateBatchItem = (idx: number, field: keyof BatchItemRow, value: string) => {
+    setBatchItems((prev) => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)))
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!token) return
 
-    const productId = Number(form.productId)
-    const quantity = Number(form.quantity)
-    if (!Number.isInteger(productId) || productId <= 0) {
-      setMessage('请选择有效品名')
-      return
-    }
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      setMessage('数量必须为正整数')
-      return
-    }
+    const supplierId = Number(batchSupplierId)
+    if (!supplierId) { setMessage('请选择供应商'); return }
+    if (!batchDate) { setMessage('请选择收货日期'); return }
+
+    const validItems = batchItems
+      .filter((item) => item.productId && item.quantity)
+      .map((item) => ({ productId: Number(item.productId), quantity: Number(item.quantity) }))
+      .filter((item) => item.productId > 0 && item.quantity > 0)
+
+    if (validItems.length === 0) { setMessage('请至少添加一个商品'); return }
 
     try {
       setSubmitting(true)
       setMessage(null)
-      await createInboundRecord(
-        {
-          productId,
-          quantity,
-          logDate: form.logDate ? new Date(form.logDate).toISOString() : undefined,
-          remark: form.remark?.trim() || undefined,
-        },
-        token
-      )
-      setForm(createInboundForm())
-      await Promise.all([fetchInventory(), fetchAllProducts(), fetchLogs()])
-      setMessage('入库成功')
+      await createReceivingBatch({
+        supplierId,
+        receivedDate: batchDate,
+        notes: batchNotes.trim() || undefined,
+        items: validItems,
+      }, token)
+      setBatchItems([createEmptyBatchItem()])
+      setBatchNotes('')
+      await Promise.all([fetchInventory(), fetchAllProducts(), fetchLogs(), fetchRecentBatches()])
+      setMessage('批次入库成功')
     } catch (err) {
       setMessage((err as Error).message)
     } finally {
@@ -462,68 +496,98 @@ export default function InventoryPage() {
   const renderInboundTab = () => (
     <div className="inventory-grid">
       <section className="inventory-card">
-        <h2>货品入库</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2>批次入库</h2>
+          <button type="button" className="ghost" onClick={() => setSuppliersModalOpen(true)}>管理供应商</button>
+        </div>
         <form className="inventory-form" onSubmit={handleSubmit}>
           <label>
-            品名
-            <SearchableSelect
-              options={productOptions}
-              value={form.productId}
-              onChange={(val) => setForm((prev) => ({ ...prev, productId: val }))}
-              placeholder="搜索商品名/价格..."
-            />
+            供应商
+            <select value={batchSupplierId} onChange={(e) => setBatchSupplierId(e.target.value)} required>
+              <option value="">请选择供应商</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
           </label>
           <label>
-            数量（件）
-            <input name="quantity" type="number" min={1} step={1} value={form.quantity} onChange={handleChange} />
+            收货日期
+            <input type="date" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} required />
           </label>
-          <label>
-            入库日期
-            <input name="logDate" type="date" value={form.logDate} onChange={handleChange} />
-          </label>
+          <label>商品明细</label>
+          <div className="batch-items-list">
+            {batchItems.map((item, idx) => (
+              <div key={idx} className="batch-item-row">
+                <SearchableSelect
+                  options={productOptions}
+                  value={item.productId}
+                  onChange={(val) => updateBatchItem(idx, 'productId', val)}
+                  placeholder="搜索商品..."
+                />
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="数量"
+                  value={item.quantity}
+                  onChange={(e) => updateBatchItem(idx, 'quantity', e.target.value)}
+                  style={{ width: 100 }}
+                />
+                <button type="button" className="ghost remove-btn" onClick={() => removeBatchItem(idx)}>
+                  删除
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="ghost" onClick={addBatchItem} style={{ alignSelf: 'flex-start' }}>
+            + 添加商品
+          </button>
           <label>
             备注
-            <textarea name="remark" rows={3} value={form.remark} onChange={handleChange} />
+            <textarea rows={2} value={batchNotes} onChange={(e) => setBatchNotes(e.target.value)} />
           </label>
           <button type="submit" disabled={submitting}>
-            {submitting ? '提交中…' : '确认入库'}
+            {submitting ? '提交中…' : '确认批次入库'}
           </button>
         </form>
       </section>
       <section className="inventory-card">
         <div className="inventory-log-header">
-          <h3>入库记录</h3>
-          <button type="button" className="ghost" onClick={() => { setLogsType('in'); fetchLogs() }} disabled={logsLoading}>
-            {logsLoading ? '刷新中…' : '刷新'}
-          </button>
+          <h3>最近批次</h3>
+          <button type="button" className="ghost" onClick={fetchRecentBatches}>刷新</button>
         </div>
         <div className="table-wrapper">
-          {logs.length === 0 ? (
-            <p className="muted">暂无入库记录。</p>
+          {recentBatches.length === 0 ? (
+            <p className="muted">暂无批次记录。</p>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>时间</th>
-                  <th>商品</th>
-                  <th>数量</th>
-                  <th>备注</th>
+                  <th>批次号</th>
+                  <th>供应商</th>
+                  <th>收货日期</th>
+                  <th>商品数</th>
+                  <th>总数量</th>
+                  <th>对账状态</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
-                    <tr key={log.id}>
-                      <td>{new Date(log.logDate).toLocaleString()}</td>
-                      <td>{log.productName ?? '-'}</td>
-                      <td>{log.quantity}</td>
-                      <td>{log.remark ?? '-'}</td>
-                    </tr>
-                  ))}
+                {recentBatches.map((b) => (
+                  <tr key={b.id}>
+                    <td>{b.batchNo}</td>
+                    <td>{b.supplierName ?? '-'}</td>
+                    <td>{b.receivedDate?.slice(0, 10)}</td>
+                    <td>{b.itemCount ?? 0}</td>
+                    <td>{b.totalQty ?? 0}</td>
+                    <td><ReconcileStatusBadge status={b.reconcileStatus} /></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
         </div>
       </section>
+      <SuppliersModal open={suppliersModalOpen} onClose={() => setSuppliersModalOpen(false)} onSuppliersChange={fetchSuppliersList} />
     </div>
   )
 
