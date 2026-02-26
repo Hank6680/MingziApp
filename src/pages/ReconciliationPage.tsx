@@ -88,7 +88,7 @@ export default function ReconciliationPage() {
           if (ws) {
             const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { header: 1 })
             if (rows.length > 0) {
-              const headers = (rows[0] as unknown[]).map(String).filter(Boolean)
+              const headers = (rows[0] as unknown as unknown[]).map(String).filter(Boolean)
               setExcelHeaders(headers)
               // Auto-guess column mapping
               const guessed: Record<string, string> = { productName: '', quantity: '', unitPrice: '', amount: '' }
