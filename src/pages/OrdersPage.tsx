@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import {
   addOrderItem,
   acknowledgeOrderChange,
@@ -275,71 +273,79 @@ export default function OrdersPage() {
     }
   }
 
-  // Generate delivery note PDF for a trip
+  // Generate delivery note via browser print (supports Chinese natively)
   const generateDeliveryNote = (tripNumber: string) => {
     const tripOrders = filteredOrders.filter((o) => o.tripNumber === tripNumber)
     if (tripOrders.length === 0) {
       setMessage('该车次无订单')
       return
     }
-    const doc = new jsPDF('p', 'mm', 'a4')
     const now = new Date().toLocaleString('zh-CN')
-    let yPos = 15
 
-    doc.setFontSize(16)
-    doc.text(`配送单 - ${tripNumber}`, 14, yPos)
-    yPos += 8
-    doc.setFontSize(9)
-    doc.text(`打印时间：${now}`, 14, yPos)
-    yPos += 10
-
-    tripOrders.forEach((order, idx) => {
-      if (idx > 0) yPos += 5
-      doc.setFontSize(11)
-      const custName = order.customerName || customerMap.get(order.customerId) || String(order.customerId)
-      doc.text(`订单 #${order.id} | 客户: ${custName} | 送达: ${formatDeliveryDate(order.deliveryDate)}`, 14, yPos)
-      yPos += 2
-
+    const ordersHtml = tripOrders.map((order) => {
+      const custName = order.customerName || customerMap.get(order.customerId) || `客户 #${order.customerId}`
       const rows = (order.items || []).map((item) => {
         const { unitPrice, lineTotal } = getLineTotals(item)
-        return [
-          item.productName ?? String(item.productId),
-          item.productUnit ?? '',
-          String(item.qtyOrdered),
-          unitPrice.toFixed(2),
-          lineTotal.toFixed(2),
-        ]
-      })
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [['商品', '单位', '数量', '单价', '小计']],
-        body: rows,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [45, 122, 79] },
-        margin: { left: 14, right: 14 },
-      })
-
-      yPos = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3
+        return `<tr>
+          <td>${item.productName ?? item.productId}</td>
+          <td>${item.productUnit ?? ''}</td>
+          <td>${item.qtyOrdered}</td>
+          <td style="text-align:right">${unitPrice.toFixed(2)}</td>
+          <td style="text-align:right">${lineTotal.toFixed(2)}</td>
+        </tr>`
+      }).join('')
       const total = computeOrderTotal(order.items)
-      doc.setFontSize(9)
-      ;(doc as any).text(`小计：${total.toFixed(2)} 元`, 160, yPos, { align: 'right' })
-      yPos += 8
+      return `
+        <div class="order-block">
+          <p class="order-info">订单 #${order.id} &nbsp;|&nbsp; 客户: <strong>${custName}</strong> &nbsp;|&nbsp; 送达: ${formatDeliveryDate(order.deliveryDate)}</p>
+          <table>
+            <thead><tr><th>商品</th><th>单位</th><th>数量</th><th style="text-align:right">单价</th><th style="text-align:right">小计</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <p class="order-total">小计：${total.toFixed(2)} 元</p>
+          <p class="sign-line">签收人：________________ &nbsp;&nbsp; 日期：________________</p>
+        </div>`
+    }).join('')
 
-      // Signature line
-      doc.setFontSize(8)
-      doc.text('签收人：________________  日期：________________', 14, yPos)
-      yPos += 8
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>配送单 - ${tripNumber}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif; font-size: 12px; color: #333; padding: 15mm; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .print-time { font-size: 10px; color: #666; margin-bottom: 16px; }
+  .order-block { margin-bottom: 20px; page-break-inside: avoid; }
+  .order-info { font-size: 12px; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; font-size: 11px; text-align: left; }
+  th { background: #2d7a4f; color: #fff; font-weight: 600; }
+  .order-total { text-align: right; font-weight: 600; font-size: 12px; margin-bottom: 8px; }
+  .sign-line { font-size: 10px; color: #666; margin-top: 6px; }
+  @media print {
+    body { padding: 0; }
+    .order-block { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <h1>配送单 - ${tripNumber}</h1>
+  <p class="print-time">打印时间：${now}</p>
+  ${ordersHtml}
+  <script>window.onload = function() { window.print(); }</script>
+</body>
+</html>`
 
-      if (yPos > 260 && idx < tripOrders.length - 1) {
-        ;(doc as any).addPage()
-        yPos = 15
-      }
-    })
-
-    doc.save(`delivery_${tripNumber}_${Date.now()}.pdf`)
-    setMessage(`配送单已生成：${tripNumber}`)
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      printWindow.document.write(html)
+      printWindow.document.close()
+      setMessage(`配送单已打开：${tripNumber}（在弹出窗口中打印或存为PDF）`)
+    } else {
+      setMessage('弹出窗口被拦截，请允许弹出窗口后重试')
+    }
   }
 
   const handleTripChange = (orderId: number, value: string) => {
