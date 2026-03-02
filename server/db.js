@@ -323,6 +323,35 @@ db.serialize(() => {
     }
   })
 
+  // Seed 10 manager accounts
+  const managerAccounts = [
+    { username: "mgr01", password: "mgr01pass" },
+    { username: "mgr02", password: "mgr02pass" },
+    { username: "mgr03", password: "mgr03pass" },
+    { username: "mgr04", password: "mgr04pass" },
+    { username: "mgr05", password: "mgr05pass" },
+    { username: "mgr06", password: "mgr06pass" },
+    { username: "mgr07", password: "mgr07pass" },
+    { username: "mgr08", password: "mgr08pass" },
+    { username: "mgr09", password: "mgr09pass" },
+    { username: "mgr10", password: "mgr10pass" },
+  ]
+  managerAccounts.forEach(({ username, password }) => {
+    db.get("SELECT COUNT(*) as count FROM users WHERE username = ?", [username], (err, row) => {
+      if (err) return
+      if (row?.count === 0) {
+        db.run(
+          "INSERT INTO users (username, password, role, customerId) VALUES (?, ?, ?, ?)",
+          [username, password, "manager", null],
+          (insertErr) => {
+            if (insertErr) console.error(`Failed to insert ${username}`, insertErr)
+            else console.log(`Seeded manager account: ${username}`)
+          }
+        )
+      }
+    })
+  })
+
   // Seed customers
   db.get("SELECT COUNT(*) as count FROM customers", (err, row) => {
     if (err) {

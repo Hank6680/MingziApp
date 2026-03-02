@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<DashboardAlert[]>([])
   const [tripSummary, setTripSummary] = useState<TripSummary[]>([])
 
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)

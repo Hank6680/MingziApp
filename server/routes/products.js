@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager } = require("../middleware/auth")
 
 const router = express.Router()
 
@@ -71,7 +71,7 @@ router.get("/", (req, res, next) => {
   }
 })
 
-router.post("/", requireAuth, requireAdmin, (req, res, next) => {
+router.post("/", requireAuth, requireAdminOrManager, (req, res, next) => {
   const { name, unit, warehouseType, price, isAvailable = 1 } = req.body
 
   if (!name || !unit || !warehouseType || typeof price !== "number") {
@@ -88,7 +88,7 @@ router.post("/", requireAuth, requireAdmin, (req, res, next) => {
   })
 })
 
-router.patch("/:id", requireAuth, requireAdmin, (req, res, next) => {
+router.patch("/:id", requireAuth, requireAdminOrManager, (req, res, next) => {
   const productId = Number(req.params.id)
   if (!Number.isInteger(productId) || productId <= 0) {
     return next(httpError(400, "Invalid product id", "VALIDATION_ERROR"))
@@ -162,7 +162,7 @@ router.patch("/:id", requireAuth, requireAdmin, (req, res, next) => {
   })
 })
 
-router.patch("/:id/availability", requireAuth, requireAdmin, (req, res, next) => {
+router.patch("/:id/availability", requireAuth, requireAdminOrManager, (req, res, next) => {
   const productId = Number(req.params.id)
   if (!Number.isInteger(productId) || productId <= 0) {
     return next(httpError(400, "Invalid product id", "VALIDATION_ERROR"))
@@ -191,7 +191,7 @@ router.patch("/:id/availability", requireAuth, requireAdmin, (req, res, next) =>
 })
 
 // Bulk update availability
-router.patch("/bulk/availability", requireAuth, requireAdmin, (req, res, next) => {
+router.patch("/bulk/availability", requireAuth, requireAdminOrManager, (req, res, next) => {
   const { ids, isAvailable } = req.body || {}
   if (!Array.isArray(ids) || ids.length === 0) {
     return next(httpError(400, "ids array required", "VALIDATION_ERROR"))
@@ -213,7 +213,7 @@ router.patch("/bulk/availability", requireAuth, requireAdmin, (req, res, next) =
 })
 
 // Bulk update price
-router.patch("/bulk/price", requireAuth, requireAdmin, (req, res, next) => {
+router.patch("/bulk/price", requireAuth, requireAdminOrManager, (req, res, next) => {
   const { ids, mode, value } = req.body || {}
   if (!Array.isArray(ids) || ids.length === 0) {
     return next(httpError(400, "ids array required", "VALIDATION_ERROR"))
@@ -248,7 +248,7 @@ router.patch("/bulk/price", requireAuth, requireAdmin, (req, res, next) => {
   })
 })
 
-router.delete("/:id", requireAuth, requireAdmin, (req, res, next) => {
+router.delete("/:id", requireAuth, requireAdminOrManager, (req, res, next) => {
   const productId = Number(req.params.id)
   if (!Number.isInteger(productId) || productId <= 0) {
     return next(httpError(400, "Invalid product id", "VALIDATION_ERROR"))
@@ -265,7 +265,7 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res, next) => {
   })
 })
 
-router.delete("/", requireAuth, requireAdmin, (req, res, next) => {
+router.delete("/", requireAuth, requireAdminOrManager, (req, res, next) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids) || ids.length === 0) {
     return next(httpError(400, "ids array required", "VALIDATION_ERROR"))

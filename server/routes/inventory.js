@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager } = require("../middleware/auth")
 
 const router = express.Router()
 
@@ -30,7 +30,7 @@ const dbAll = (sql, params = []) =>
   )
 
 router.use(requireAuth)
-router.use(requireAdmin)
+router.use(requireAdminOrManager)
 
 router.get("/summary", async (req, res, next) => {
   try {

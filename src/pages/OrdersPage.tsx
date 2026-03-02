@@ -108,7 +108,7 @@ export default function OrdersPage() {
   // Delete order confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<{ orderId: number; customerName: string } | null>(null)
 
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
 
   const loadProducts = useCallback(async () => {
     if (!token || !isAdmin || productsCache.length) return

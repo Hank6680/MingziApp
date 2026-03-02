@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdmin, requireStaffOrAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager, requireStaffOrAdmin } = require("../middleware/auth")
 
 const router = express.Router()
 
@@ -77,7 +77,7 @@ router.get("/grouped", requireStaffOrAdmin, async (_req, res, next) => {
 })
 
 // PUT /api/customer-tags/customer/:id - set tags for a customer (admin only)
-router.put("/customer/:id", requireAdmin, async (req, res, next) => {
+router.put("/customer/:id", requireAdminOrManager, async (req, res, next) => {
   const customerId = Number(req.params.id)
   if (!Number.isFinite(customerId) || customerId <= 0) {
     return next(httpError(400, "Invalid customer id", "VALIDATION_ERROR"))

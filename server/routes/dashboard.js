@@ -1,6 +1,6 @@
 const express = require("express")
 const db = require("../db")
-const { requireAuth, requireAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager } = require("../middleware/auth")
 
 const router = express.Router()
 
@@ -23,7 +23,7 @@ const dbGet = (sql, params = []) =>
 router.use(requireAuth)
 
 // Main dashboard stats
-router.get("/stats", requireAdmin, async (_req, res, next) => {
+router.get("/stats", requireAdminOrManager, async (_req, res, next) => {
   try {
     const today = new Date().toISOString().slice(0, 10)
 
@@ -139,7 +139,7 @@ router.get("/stats", requireAdmin, async (_req, res, next) => {
 })
 
 // Get distinct trip numbers
-router.get("/trips", requireAdmin, async (_req, res, next) => {
+router.get("/trips", requireAdminOrManager, async (_req, res, next) => {
   try {
     const rows = await dbAll(
       "SELECT DISTINCT tripNumber FROM orders WHERE tripNumber IS NOT NULL AND tripNumber != '' ORDER BY tripNumber"

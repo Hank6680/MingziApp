@@ -34,7 +34,7 @@ export default function Navbar() {
         {user && (
           <>
             <NavLink to="/dashboard" onClick={closeMenu}>仪表盘</NavLink>
-            {(user.role === 'staff' || user.role === 'admin') && (
+            {(user.role === 'staff' || user.role === 'admin' || user.role === 'manager') && (
               <NavLink to="/staff-ordering" onClick={closeMenu}>
                 代客下单
                 {totalItems > 0 && <span className="nav-cart-badge">{totalItems}</span>}
@@ -42,12 +42,16 @@ export default function Navbar() {
             )}
             {user.role !== 'staff' && <NavLink to="/products" onClick={closeMenu}>商品下单</NavLink>}
             <NavLink to="/orders" onClick={closeMenu}>订单列表</NavLink>
-            {user.role === 'admin' && (
+            {(user.role === 'admin' || user.role === 'manager') && (
               <>
                 <NavLink to="/customers" onClick={closeMenu}>客户管理</NavLink>
                 <NavLink to="/suppliers" onClick={closeMenu}>供应商</NavLink>
                 <NavLink to="/picking" onClick={closeMenu}>拣货任务</NavLink>
                 <NavLink to="/inventory" onClick={closeMenu}>库存管理</NavLink>
+              </>
+            )}
+            {user.role === 'admin' && (
+              <>
                 <NavLink to="/reconciliation" onClick={closeMenu}>供应商对账</NavLink>
                 <NavLink to="/settings" onClick={closeMenu}>系统设置</NavLink>
               </>

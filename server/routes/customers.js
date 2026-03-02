@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdmin, requireStaffOrAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager, requireStaffOrAdmin } = require("../middleware/auth")
 
 const router = express.Router()
 
@@ -94,7 +94,7 @@ router.get("/:id/frequent-products", requireStaffOrAdmin, async (req, res, next)
 })
 
 // PATCH /:id — update customer fields (admin only)
-router.patch("/:id", requireAdmin, async (req, res, next) => {
+router.patch("/:id", requireAdminOrManager, async (req, res, next) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) {
     return next(httpError(400, "Invalid customer id", "VALIDATION_ERROR"))
@@ -152,7 +152,7 @@ router.patch("/:id", requireAdmin, async (req, res, next) => {
 })
 
 // DELETE /:id — delete customer (admin only, only if no orders reference it)
-router.delete("/:id", requireAdmin, async (req, res, next) => {
+router.delete("/:id", requireAdminOrManager, async (req, res, next) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) {
     return next(httpError(400, "Invalid customer id", "VALIDATION_ERROR"))

@@ -36,8 +36,16 @@ const requireAdmin = (req, _res, next) => {
   return next()
 }
 
+const requireAdminOrManager = (req, _res, next) => {
+  if (req.user?.role !== "admin" && req.user?.role !== "manager") {
+    return next(httpError(403, "Admin or manager privileges required", "AUTH_FORBIDDEN"))
+  }
+  return next()
+}
+
 const requireStaffOrAdmin = (req, _res, next) => {
-  if (req.user?.role !== "staff" && req.user?.role !== "admin") {
+  const role = req.user?.role
+  if (role !== "staff" && role !== "admin" && role !== "manager") {
     return next(httpError(403, "Staff or admin privileges required", "AUTH_FORBIDDEN"))
   }
   return next()
@@ -48,5 +56,6 @@ module.exports = {
   authenticate,
   requireAuth,
   requireAdmin,
+  requireAdminOrManager,
   requireStaffOrAdmin,
 }

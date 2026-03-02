@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManagerOrManager } = require("../middleware/auth")
 
 const router = express.Router()
 const boxUnits = new Set(["箱", "桶", "包"])
@@ -203,7 +203,7 @@ router.get("/", (req, res, next) => {
   const params = []
   let targetCustomerId = req.user.customerId
 
-  if ((req.user.role === "admin" || req.user.role === "staff") && req.query.customerId) {
+  if ((req.user.role === "admin" || req.user.role === "manager" || req.user.role === "staff") && req.query.customerId) {
     const parsed = Number(req.query.customerId)
     if (!Number.isFinite(parsed) || parsed < 0) {
       return next(httpError(400, "customerId must be a positive number", "VALIDATION_ERROR"))
@@ -212,7 +212,7 @@ router.get("/", (req, res, next) => {
   }
 
   // staff and admin can view all orders (no customerId filter required)
-  if (req.user.role !== "admin" && req.user.role !== "staff") {
+  if (req.user.role !== "admin" && req.user.role !== "manager" && req.user.role !== "staff") {
     if (!Number.isFinite(targetCustomerId)) {
       return next(httpError(400, "User is missing customerId", "VALIDATION_ERROR"))
     }
@@ -271,7 +271,7 @@ router.get("/", (req, res, next) => {
   })
 })
 
-router.get("/picking", requireAdmin, async (req, res, next) => {
+router.get("/picking", requireAdminOrManager, async (req, res, next) => {
   const { trip, warehouseType } = req.query
   if (!trip || typeof trip !== "string" || !trip.trim()) {
     return next(httpError(400, "trip query parameter is required", "VALIDATION_ERROR"))
@@ -310,7 +310,7 @@ router.get("/:id", async (req, res, next) => {
     if (!order) {
       return next(httpError(404, "Order not found", "NOT_FOUND"))
     }
-    if (req.user.role !== "admin" && req.user.role !== "staff" && order.customerId !== req.user.customerId) {
+    if (req.user.role !== "admin" && req.user.role !== "manager" && req.user.role !== "staff" && order.customerId !== req.user.customerId) {
       return next(httpError(403, "Not allowed to view this order", "AUTH_FORBIDDEN"))
     }
     return res.json(order)
@@ -483,7 +483,7 @@ router.post("/", async (req, res, next) => {
   }
 })
 
-router.get("/pending/changes", requireAdmin, async (_req, res, next) => {
+router.get("/pending/changes", requireAdminOrManager, async (_req, res, next) => {
   try {
     const orders = await dbAll(
       `SELECT o.*, c.name as customerName FROM orders o
@@ -525,7 +525,7 @@ router.get("/pending/changes", requireAdmin, async (_req, res, next) => {
   }
 })
 
-router.get("/:id/change-logs", requireAdmin, async (req, res, next) => {
+router.get("/:id/change-logs", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -547,7 +547,7 @@ router.get("/:id/change-logs", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.delete("/:id", requireAdmin, async (req, res, next) => {
+router.delete("/:id", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -579,7 +579,7 @@ router.delete("/:id", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.patch("/:id/status", requireAdmin, async (req, res, next) => {
+router.patch("/:id/status", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isFinite(orderId)) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -664,7 +664,7 @@ router.patch("/:id/status", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.patch("/:id/review", requireAdmin, async (req, res, next) => {
+router.patch("/:id/review", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -678,7 +678,7 @@ router.patch("/:id/review", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.patch("/:id/trip", requireAdmin, async (req, res, next) => {
+router.patch("/:id/trip", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isFinite(orderId)) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -703,7 +703,7 @@ router.patch("/:id/trip", requireAdmin, async (req, res, next) => {
   })
 })
 
-router.post("/:id/items", requireAdmin, async (req, res, next) => {
+router.post("/:id/items", requireAdminOrManager, async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
@@ -753,7 +753,7 @@ router.post("/:id/items", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.patch("/items/:id", requireAdmin, async (req, res, next) => {
+router.patch("/items/:id", requireAdminOrManager, async (req, res, next) => {
   const itemId = Number(req.params.id)
   if (!Number.isInteger(itemId) || itemId <= 0) {
     return next(httpError(400, "Invalid item id", "VALIDATION_ERROR"))
@@ -811,7 +811,7 @@ router.patch("/items/:id", requireAdmin, async (req, res, next) => {
   }
 })
 
-router.delete("/items/:id", requireAdmin, async (req, res, next) => {
+router.delete("/items/:id", requireAdminOrManager, async (req, res, next) => {
   const itemId = Number(req.params.id)
   if (!Number.isInteger(itemId) || itemId <= 0) {
     return next(httpError(400, "Invalid item id", "VALIDATION_ERROR"))
