@@ -37,11 +37,21 @@ export default function ReconciliationPage() {
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
 
+  // List filters
+  const [filterSupplierId, setFilterSupplierId] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+
   // Detail tab
   const [selectedInvoice, setSelectedInvoice] = useState<SupplierInvoice | null>(null)
   const [detailItems, setDetailItems] = useState<SupplierInvoiceItem[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirming, setConfirming] = useState(false)
+
+  // Batch selection for items
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set())
+
+  // Tolerance setting (percentage)
+  const [tolerancePct, setTolerancePct] = useState(5)
 
   const fetchSuppliers = useCallback(async () => {
     if (!token) return
@@ -55,14 +65,17 @@ export default function ReconciliationPage() {
     if (!token) return
     try {
       setInvoicesLoading(true)
-      const data = await getSupplierInvoices({}, token)
+      const params: { supplierId?: number; status?: string } = {}
+      if (filterSupplierId) params.supplierId = Number(filterSupplierId)
+      if (filterStatus) params.status = filterStatus
+      const data = await getSupplierInvoices(params, token)
       setInvoices(data.items)
     } catch (err) {
       setMessage((err as Error).message)
     } finally {
       setInvoicesLoading(false)
     }
-  }, [token])
+  }, [token, filterSupplierId, filterStatus])
 
   useEffect(() => {
     fetchSuppliers()
@@ -205,6 +218,69 @@ export default function ReconciliationPage() {
     }
   }
 
+  // Batch confirm selected items
+  const handleBatchConfirmSelected = async () => {
+    if (!token || !selectedInvoice || selectedItemIds.size === 0) return
+    try {
+      setConfirming(true)
+      for (const itemId of selectedItemIds) {
+        await updateInvoiceItem(selectedInvoice.id, itemId, { matchStatus: 'manual_confirmed' }, token)
+      }
+      // Refresh
+      const data = await getSupplierInvoice(selectedInvoice.id, token)
+      setSelectedInvoice(data.invoice)
+      setDetailItems(data.invoice.items ?? [])
+      setSelectedItemIds(new Set())
+      setMessage(`已批量确认 ${selectedItemIds.size} 项`)
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  // Auto-confirm items within tolerance
+  const handleAutoToleranceConfirm = async () => {
+    if (!token || !selectedInvoice) return
+    const withinTolerance = detailItems.filter((item) => {
+      if (item.matchStatus !== 'need_review') return false
+      if (item.matchedQty == null || item.quantity == null) return false
+      const diff = Math.abs(item.matchedQty - item.quantity)
+      const pct = item.quantity > 0 ? (diff / item.quantity) * 100 : Infinity
+      return pct <= tolerancePct
+    })
+    if (withinTolerance.length === 0) {
+      setMessage(`没有在 ±${tolerancePct}% 容差范围内的待复核项`)
+      return
+    }
+    try {
+      setConfirming(true)
+      for (const item of withinTolerance) {
+        await updateInvoiceItem(selectedInvoice.id, item.id, {
+          matchStatus: 'manual_confirmed',
+          discrepancyNotes: `容差内自动确认 (±${tolerancePct}%)`,
+        }, token)
+      }
+      const data = await getSupplierInvoice(selectedInvoice.id, token)
+      setSelectedInvoice(data.invoice)
+      setDetailItems(data.invoice.items ?? [])
+      setMessage(`已自动确认 ${withinTolerance.length} 项（在 ±${tolerancePct}% 范围内）`)
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  const toggleItemSelection = (itemId: number) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(itemId)) next.delete(itemId)
+      else next.add(itemId)
+      return next
+    })
+  }
+
   const renderUploadTab = () => (
     <div className="inventory-grid">
       <section className="inventory-card">
@@ -287,6 +363,21 @@ export default function ReconciliationPage() {
 
   const renderListTab = () => (
     <div>
+      <div className="filters" style={{ marginBottom: '1rem' }}>
+        <select value={filterSupplierId} onChange={(e) => setFilterSupplierId(e.target.value)}>
+          <option value="">全部供应商</option>
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="">全部状态</option>
+          <option value="pending">待对账</option>
+          <option value="confirmed">已确认</option>
+          <option value="partial">部分确认</option>
+        </select>
+        <button type="button" className="ghost" onClick={fetchInvoices}>筛选</button>
+      </div>
       {invoicesLoading ? (
         <p className="muted">加载中...</p>
       ) : invoices.length === 0 ? (
@@ -346,30 +437,42 @@ export default function ReconciliationPage() {
     ignored: detailItems.filter((i) => i.matchStatus === 'ignored'),
   }
 
-  const renderItemRow = (item: SupplierInvoiceItem) => (
-    <tr key={item.id}>
-      <td>{item.productName}</td>
-      <td>{item.quantity}</td>
-      <td>{item.matchedQty != null ? item.matchedQty : '-'}</td>
-      <td>{item.unitPrice ? `¥${item.unitPrice.toFixed(2)}` : '-'}</td>
-      <td>{item.amount ? `¥${item.amount.toFixed(2)}` : '-'}</td>
-      <td><MatchStatusBadge status={item.matchStatus} /></td>
-      <td>
-        <div className="admin-actions">
-          {item.matchStatus !== 'manual_confirmed' && item.matchStatus !== 'ignored' && (
-            <>
-              <button type="button" className="ghost" onClick={() => handleUpdateItem(item.id, { matchStatus: 'manual_confirmed' })}>
-                确认
-              </button>
-              <button type="button" className="ghost" onClick={() => handleUpdateItem(item.id, { matchStatus: 'ignored' })}>
-                忽略
-              </button>
-            </>
+  const renderItemRow = (item: SupplierInvoiceItem) => {
+    const canAct = item.matchStatus !== 'manual_confirmed' && item.matchStatus !== 'ignored' && item.matchStatus !== 'auto_confirmed'
+    return (
+      <tr key={item.id}>
+        <td>
+          {canAct && (
+            <input
+              type="checkbox"
+              checked={selectedItemIds.has(item.id)}
+              onChange={() => toggleItemSelection(item.id)}
+            />
           )}
-        </div>
-      </td>
-    </tr>
-  )
+        </td>
+        <td>{item.productName}</td>
+        <td>{item.quantity}</td>
+        <td>{item.matchedQty != null ? item.matchedQty : '-'}</td>
+        <td>{item.unitPrice ? `¥${item.unitPrice.toFixed(2)}` : '-'}</td>
+        <td>{item.amount ? `¥${item.amount.toFixed(2)}` : '-'}</td>
+        <td><MatchStatusBadge status={item.matchStatus} /></td>
+        <td>
+          <div className="admin-actions">
+            {canAct && (
+              <>
+                <button type="button" className="ghost" onClick={() => handleUpdateItem(item.id, { matchStatus: 'manual_confirmed' })}>
+                  确认
+                </button>
+                <button type="button" className="ghost" onClick={() => handleUpdateItem(item.id, { matchStatus: 'ignored' })}>
+                  忽略
+                </button>
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
 
   const renderMatchGroup = (title: string, items: SupplierInvoiceItem[], groupClass: string) => {
     if (items.length === 0) return null
@@ -380,6 +483,7 @@ export default function ReconciliationPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 36 }}></th>
                 <th>品名</th>
                 <th>账单数量</th>
                 <th>收货数量</th>
@@ -412,11 +516,32 @@ export default function ReconciliationPage() {
               {selectedInvoice.totalAmount != null && ` | 总金额 ¥${selectedInvoice.totalAmount.toFixed(2)}`}
             </p>
           </div>
-          <div className="admin-actions">
-            <button type="button" onClick={handleConfirmAll} disabled={confirming}>
-              {confirming ? '确认中…' : '批量确认'}
-            </button>
-            <button type="button" className="ghost" onClick={() => setActiveTab('list')}>返回列表</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+            <div className="admin-actions">
+              <button type="button" onClick={handleConfirmAll} disabled={confirming}>
+                {confirming ? '确认中…' : '全部确认'}
+              </button>
+              <button type="button" className="ghost" onClick={handleBatchConfirmSelected} disabled={confirming || selectedItemIds.size === 0}>
+                确认所选 ({selectedItemIds.size})
+              </button>
+              <button type="button" className="ghost" onClick={() => setActiveTab('list')}>返回列表</button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem' }}>
+              <span>容差：</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={tolerancePct}
+                onChange={(e) => setTolerancePct(Number(e.target.value) || 0)}
+                style={{ width: 60 }}
+              />
+              <span>%</span>
+              <button type="button" className="ghost" onClick={handleAutoToleranceConfirm} disabled={confirming}>
+                容差内自动确认
+              </button>
+            </div>
           </div>
         </div>
 

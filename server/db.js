@@ -74,6 +74,18 @@ db.serialize(() => {
   `)
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      contact TEXT,
+      phone TEXT,
+      address TEXT,
+      notes TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customerId INTEGER,
@@ -185,6 +197,42 @@ db.serialize(() => {
     )
   `)
 
+  // Price history table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS price_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      productId INTEGER NOT NULL,
+      oldPrice REAL,
+      newPrice REAL NOT NULL,
+      changedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      changedBy TEXT,
+      FOREIGN KEY(productId) REFERENCES products(id)
+    )
+  `)
+
+  // Audit logs table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      entity TEXT,
+      entityId INTEGER,
+      detail TEXT,
+      username TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Customer tags table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS customer_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customerId INTEGER NOT NULL,
+      tag TEXT NOT NULL,
+      UNIQUE(customerId, tag)
+    )
+  `)
+
   ensureColumn("inventory_logs", "batchId", "INTEGER")
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
@@ -234,13 +282,21 @@ db.serialize(() => {
     if (row?.count === 0) {
       db.run(
         "INSERT INTO users (username, password, role, customerId) VALUES (?, ?, ?, ?)",
-        ["demo", "demo123", "customer", 1],
+        ["demo", "demo123", "staff", null],
         (insertErr) => {
           if (insertErr) {
             console.error("Failed to insert demo user", insertErr)
           } else {
-            console.log("Seeded demo user")
+            console.log("Seeded demo (staff) user")
           }
+        }
+      )
+    } else {
+      // Migrate existing demo user to staff role
+      db.run(
+        "UPDATE users SET role = 'staff', customerId = NULL WHERE username = 'demo' AND role = 'customer'",
+        (updateErr) => {
+          if (updateErr) console.error("Failed to migrate demo user to staff", updateErr)
         }
       )
     }
@@ -264,6 +320,46 @@ db.serialize(() => {
           }
         }
       )
+    }
+  })
+
+  // Seed customers
+  db.get("SELECT COUNT(*) as count FROM customers", (err, row) => {
+    if (err) {
+      console.error("Failed to count customers", err)
+      return
+    }
+
+    if (row?.count === 0) {
+      const seedCustomers = [
+        { name: "好味道餐厅", contact: "张经理", phone: "13800001111", address: "市中心路100号" },
+        { name: "家常菜馆", contact: "李老板", phone: "13800002222", address: "和平路200号" },
+        { name: "鲜味坊", contact: "王师傅", phone: "13800003333", address: "新华街300号" },
+      ]
+
+      const stmt = db.prepare(
+        "INSERT INTO customers (name, contact, phone, address) VALUES (?, ?, ?, ?)"
+      )
+      seedCustomers.forEach((c) => {
+        stmt.run(c.name, c.contact, c.phone, c.address)
+      })
+      stmt.finalize((seedErr) => {
+        if (seedErr) {
+          console.error("Failed to seed customers", seedErr)
+        } else {
+          console.log(`Seeded ${seedCustomers.length} customers`)
+          // Seed example customer tags
+          const tagStmt = db.prepare(
+            "INSERT OR IGNORE INTO customer_tags (customerId, tag) VALUES (?, ?)"
+          )
+          tagStmt.run(1, "区域A")
+          tagStmt.run(2, "区域A")
+          tagStmt.run(3, "VIP")
+          tagStmt.run(1, "VIP")
+          tagStmt.finalize()
+          console.log("Seeded example customer tags")
+        }
+      })
     }
   })
 })

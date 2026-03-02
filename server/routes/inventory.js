@@ -310,4 +310,59 @@ router.get("/logs", async (req, res, next) => {
   }
 })
 
+// Stock count (盘点) - submit actual counts and auto-adjust
+router.post("/stockcount", async (req, res, next) => {
+  const { items, warehouseType } = req.body || {}
+  if (!Array.isArray(items) || items.length === 0) {
+    return next(httpError(400, "items array required", "VALIDATION_ERROR"))
+  }
+
+  const nowIso = new Date().toISOString()
+  const results = []
+
+  try {
+    await dbRun("BEGIN IMMEDIATE")
+
+    for (const entry of items) {
+      const productId = Number(entry.productId)
+      const actualStock = Number(entry.actualStock)
+      if (!Number.isInteger(productId) || productId <= 0) continue
+      if (!Number.isFinite(actualStock) || actualStock < 0) continue
+
+      const product = await dbGet("SELECT id, name, stock FROM products WHERE id = ?", [productId])
+      if (!product) continue
+
+      const systemStock = Number(product.stock) || 0
+      const diff = actualStock - systemStock
+
+      if (diff === 0) {
+        results.push({ productId, name: product.name, systemStock, actualStock, diff: 0, adjusted: false })
+        continue
+      }
+
+      await dbRun("UPDATE products SET stock = ? WHERE id = ?", [actualStock, productId])
+      const logType = diff > 0 ? "in" : "out"
+      const remark = `盘点调整：系统 ${systemStock} → 实际 ${actualStock}（${diff > 0 ? "+" : ""}${diff}）${warehouseType ? ` [${warehouseType}]` : ""}`
+      await dbRun(
+        `INSERT INTO inventory_logs (productId, type, quantity, logDate, remark)
+         VALUES (?, ?, ?, ?, ?)`,
+        [productId, logType, Math.abs(diff), nowIso, remark]
+      )
+
+      results.push({ productId, name: product.name, systemStock, actualStock, diff, adjusted: true })
+    }
+
+    await dbRun("COMMIT")
+    return res.json({
+      success: true,
+      total: results.length,
+      adjusted: results.filter((r) => r.adjusted).length,
+      items: results,
+    })
+  } catch (err) {
+    await dbRun("ROLLBACK").catch(() => {})
+    return next(err)
+  }
+})
+
 module.exports = router

@@ -6,10 +6,12 @@ import type {
   OrderItem,
   PendingOrderSummary,
   OrderChangeLog,
+  Customer,
   Supplier,
   ReceivingBatch,
   SupplierInvoice,
   SupplierInvoiceItem,
+  CustomerCart,
 } from '../types'
 
 const API_BASE =
@@ -98,6 +100,13 @@ export function getOrders(token: string, customerId?: number) {
   })
 }
 
+export function deleteOrder(orderId: number, token: string) {
+  return request<{ success: boolean; deletedOrderId: number }>(`/api/orders/${orderId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
 export function updateOrderStatus(orderId: number, status: string, token: string) {
   return request<Order>(`/api/orders/${orderId}/status`, {
     method: 'PATCH',
@@ -133,6 +142,22 @@ export function bulkDeleteProducts(ids: number[], token: string) {
   return request<{ success: boolean; deleted: number }>(`/api/products`, {
     method: 'DELETE',
     body: JSON.stringify({ ids }),
+    token,
+  })
+}
+
+export function bulkUpdateAvailability(ids: number[], isAvailable: boolean, token: string) {
+  return request<{ success: boolean; updated: number }>(`/api/products/bulk/availability`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, isAvailable }),
+    token,
+  })
+}
+
+export function bulkUpdatePrice(ids: number[], mode: 'percentage' | 'fixed', value: number, token: string) {
+  return request<{ success: boolean; updated: number }>(`/api/products/bulk/price`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, mode, value }),
     token,
   })
 }
@@ -320,6 +345,75 @@ export function getInventoryLogs(params: { type?: string; limit?: number } = {},
   })
 }
 
+export interface StockCountItem {
+  productId: number
+  actualStock: number
+}
+
+export function submitStockCount(items: StockCountItem[], warehouseType: string, token: string) {
+  return request<{
+    success: boolean
+    total: number
+    adjusted: number
+    items: Array<{
+      productId: number
+      name: string
+      systemStock: number
+      actualStock: number
+      diff: number
+      adjusted: boolean
+    }>
+  }>('/api/inventory/stockcount', {
+    method: 'POST',
+    body: JSON.stringify({ items, warehouseType }),
+    token,
+  })
+}
+
+// --- Customers ---
+
+export function getCustomers(token: string) {
+  return request<{ items: Customer[] }>('/api/customers', { method: 'GET', token })
+}
+
+export function createCustomer(payload: { name: string; contact?: string; phone?: string; address?: string; notes?: string }, token: string) {
+  return request<{ item: Customer }>('/api/customers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function updateCustomer(id: number, payload: Partial<{ name: string; contact: string; phone: string; address: string; notes: string }>, token: string) {
+  return request<{ item: Customer }>(`/api/customers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function deleteCustomer(id: number, token: string) {
+  return request<void>(`/api/customers/${id}`, { method: 'DELETE', token })
+}
+
+export interface FrequentProduct {
+  productId: number
+  name: string
+  unit: string
+  warehouseType: string
+  price: number
+  isAvailable: number
+  totalQty: number
+  orderCount: number
+}
+
+export function getCustomerFrequentProducts(customerId: number, token: string) {
+  return request<{ items: FrequentProduct[] }>(`/api/customers/${customerId}/frequent-products`, {
+    method: 'GET',
+    token,
+  })
+}
+
 // --- Suppliers ---
 
 export function getSuppliers(token: string) {
@@ -447,4 +541,134 @@ export function confirmInvoice(invoiceId: number, token: string) {
     method: 'POST',
     token,
   })
+}
+
+// --- Dashboard ---
+
+export interface DashboardTrend {
+  day: string
+  orders: number
+  revenue: number
+}
+
+export interface DashboardAlert {
+  type: string
+  level: string
+  title: string
+  items?: Array<{ id: number; name: string; stock: number; unit: string }>
+}
+
+export interface TripSummary {
+  tripNumber: string
+  orderCount: number
+  pickedItems: number
+  totalItems: number
+}
+
+export interface DashboardStats {
+  stats: {
+    totalProducts: number
+    availableProducts: number
+    lowStockProducts: number
+    todayOrders: number
+    pendingOrders: number
+    totalRevenue: number
+  }
+  trends: DashboardTrend[]
+  alerts: DashboardAlert[]
+  tripSummary: TripSummary[]
+}
+
+export function getDashboardStats(token: string) {
+  return request<DashboardStats>('/api/dashboard/stats', { method: 'GET', token })
+}
+
+export function getTripNumbers(token: string) {
+  return request<{ trips: string[] }>('/api/dashboard/trips', { method: 'GET', token })
+}
+
+export function getOrdersByTrip(trip: string, token: string) {
+  return request<Order[]>(`/api/orders?tripNumber=${encodeURIComponent(trip)}`, { method: 'GET', token })
+}
+
+// --- System ---
+
+export interface PriceHistoryEntry {
+  id: number
+  productId: number
+  oldPrice: number | null
+  newPrice: number
+  changedAt: string
+  changedBy: string | null
+}
+
+export function getPriceHistory(productId: number, token: string) {
+  return request<{ product: { id: number; name: string }; items: PriceHistoryEntry[] }>(
+    `/api/system/price-history/${productId}`,
+    { method: 'GET', token }
+  )
+}
+
+export interface AuditLogEntry {
+  id: number
+  action: string
+  entity: string | null
+  entityId: number | null
+  detail: string | null
+  username: string | null
+  createdAt: string
+}
+
+export function getAuditLogs(params: { limit?: number; entity?: string } = {}, token: string) {
+  const q = new URLSearchParams()
+  if (params.limit) q.set('limit', String(params.limit))
+  if (params.entity) q.set('entity', params.entity)
+  const s = q.toString() ? `?${q.toString()}` : ''
+  return request<{ items: AuditLogEntry[] }>(`/api/system/audit-logs${s}`, { method: 'GET', token })
+}
+
+export function getDbInfo(token: string) {
+  return request<{ tables: Record<string, number> }>('/api/system/db-info', { method: 'GET', token })
+}
+
+// --- Customer Tags ---
+
+export function getCustomerTags(token: string) {
+  return request<{ tags: string[] }>('/api/customer-tags', { method: 'GET', token })
+}
+
+export function getCustomersGrouped(token: string) {
+  return request<{
+    customers: Customer[]
+    grouped: Record<string, Customer[]>
+    tags: string[]
+    untagged: Customer[]
+  }>('/api/customer-tags/grouped', { method: 'GET', token })
+}
+
+export function setCustomerTags(customerId: number, tags: string[], token: string) {
+  return request<{ customerId: number; tags: string[] }>(`/api/customer-tags/customer/${customerId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ tags }),
+    token,
+  })
+}
+
+// --- Batch Orders (staff) ---
+
+export interface BatchOrderInput {
+  customerId: number
+  deliveryDate: string
+  items: { productId: number; qtyOrdered: number; unitPrice?: number }[]
+}
+
+export function createOrdersBatch(orders: BatchOrderInput[], token: string) {
+  return request<{ orders: { orderId: number; customerId: number; deliveryDate: string }[]; count: number }>(
+    '/api/orders/batch',
+    {
+      method: 'POST',
+      body: JSON.stringify({ orders }),
+      token,
+    }
+  )
 }

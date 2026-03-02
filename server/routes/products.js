@@ -134,21 +134,30 @@ router.patch("/:id", requireAuth, requireAdmin, (req, res, next) => {
     return next(httpError(400, "No valid fields provided", "VALIDATION_ERROR"))
   }
 
-  const sql = `UPDATE products SET ${fields.join(", ")} WHERE id = ?`
-  values.push(productId)
+  // Get old price for history logging
+  db.get("SELECT price FROM products WHERE id = ?", [productId], (lookupErr, existing) => {
+    if (lookupErr) return next(lookupErr)
 
-  db.run(sql, values, function (err) {
-    if (err) {
-      return next(err)
-    }
-    if (this.changes === 0) {
-      return next(httpError(404, "Product not found", "NOT_FOUND"))
-    }
-    db.get("SELECT * FROM products WHERE id = ?", [productId], (fetchErr, row) => {
-      if (fetchErr) {
-        return next(fetchErr)
+    const sql = `UPDATE products SET ${fields.join(", ")} WHERE id = ?`
+    values.push(productId)
+
+    db.run(sql, values, function (err) {
+      if (err) return next(err)
+      if (this.changes === 0) return next(httpError(404, "Product not found", "NOT_FOUND"))
+
+      // Record price change
+      if (price !== undefined && existing && existing.price !== price) {
+        const username = req.user?.username || 'admin'
+        db.run(
+          "INSERT INTO price_history (productId, oldPrice, newPrice, changedBy) VALUES (?, ?, ?, ?)",
+          [productId, existing.price, price, username]
+        )
       }
-      return res.json(row)
+
+      db.get("SELECT * FROM products WHERE id = ?", [productId], (fetchErr, row) => {
+        if (fetchErr) return next(fetchErr)
+        return res.json(row)
+      })
     })
   })
 })
@@ -177,6 +186,64 @@ router.patch("/:id/availability", requireAuth, requireAdmin, (req, res, next) =>
         return next(fetchErr)
       }
       return res.json(row)
+    })
+  })
+})
+
+// Bulk update availability
+router.patch("/bulk/availability", requireAuth, requireAdmin, (req, res, next) => {
+  const { ids, isAvailable } = req.body || {}
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return next(httpError(400, "ids array required", "VALIDATION_ERROR"))
+  }
+  const flag = isAvailable === true || isAvailable === 1 ? 1 : 0
+  const normalized = ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+  if (normalized.length === 0) {
+    return next(httpError(400, "No valid ids provided", "VALIDATION_ERROR"))
+  }
+  const placeholders = normalized.map(() => "?").join(",")
+  db.run(
+    `UPDATE products SET isAvailable = ? WHERE id IN (${placeholders})`,
+    [flag, ...normalized],
+    function (err) {
+      if (err) return next(err)
+      return res.json({ success: true, updated: this.changes })
+    }
+  )
+})
+
+// Bulk update price
+router.patch("/bulk/price", requireAuth, requireAdmin, (req, res, next) => {
+  const { ids, mode, value } = req.body || {}
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return next(httpError(400, "ids array required", "VALIDATION_ERROR"))
+  }
+  if (!["percentage", "fixed"].includes(mode)) {
+    return next(httpError(400, "mode must be 'percentage' or 'fixed'", "VALIDATION_ERROR"))
+  }
+  const numVal = Number(value)
+  if (!Number.isFinite(numVal)) {
+    return next(httpError(400, "value must be a finite number", "VALIDATION_ERROR"))
+  }
+  const normalized = ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+  if (normalized.length === 0) {
+    return next(httpError(400, "No valid ids provided", "VALIDATION_ERROR"))
+  }
+  const placeholders = normalized.map(() => "?").join(",")
+  let sql
+  if (mode === "percentage") {
+    // e.g. value = 10 means +10%, value = -5 means -5%
+    sql = `UPDATE products SET price = ROUND(price * (1 + ? / 100.0), 2) WHERE id IN (${placeholders})`
+  } else {
+    // fixed: add value to price (can be negative)
+    sql = `UPDATE products SET price = ROUND(price + ?, 2) WHERE id IN (${placeholders})`
+  }
+  db.run(sql, [numVal, ...normalized], function (err) {
+    if (err) return next(err)
+    // ensure no negative prices
+    db.run(`UPDATE products SET price = 0 WHERE price < 0 AND id IN (${placeholders})`, normalized, function (err2) {
+      if (err2) return next(err2)
+      return res.json({ success: true, updated: this.changes || 0 })
     })
   })
 })

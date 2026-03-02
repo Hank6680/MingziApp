@@ -1,4 +1,4 @@
-export type UserRole = 'customer' | 'admin'
+export type UserRole = 'customer' | 'admin' | 'staff'
 
 export interface User {
   id: number
@@ -51,6 +51,7 @@ export interface OrderChangeLog {
 export interface Order {
   id: number
   customerId: number
+  customerName?: string
   deliveryDate: string
   status: string
   tripNumber?: string | null
@@ -58,6 +59,7 @@ export interface Order {
   pendingReview?: number
   lastModifiedAt?: string | null
   lastReviewedAt?: string | null
+  createdAt?: string
   items?: OrderItem[]
 }
 
@@ -86,6 +88,7 @@ export interface PickingItem {
   itemId: number
   orderId: number
   customerId: number
+  customerName?: string
   tripNumber: string | null
   productId: number
   qtyOrdered: number
@@ -98,12 +101,43 @@ export interface PickingItem {
   price: number
 }
 
+// --- Customers ---
+
+export interface Customer {
+  id: number
+  name: string
+  contact?: string | null
+  phone?: string | null
+  address?: string | null
+  notes?: string | null
+  createdAt: string
+  tags?: string[]
+}
+
+// --- Staff Ordering Cart ---
+
+export interface CartItem {
+  productId: number
+  productName: string
+  unit: string
+  price: number
+  qty: number
+}
+
+export interface CustomerCart {
+  customerId: number
+  customerName: string
+  deliveryDate: string
+  items: CartItem[]
+}
+
 // --- Suppliers & Receiving Batches ---
 
 export interface Supplier {
   id: number
   name: string
   contact?: string | null
+  phone?: string | null
   notes?: string | null
   createdAt: string
 }
@@ -125,6 +159,7 @@ export interface ReceivingBatch {
   supplierId: number
   supplierName?: string
   receivedDate: string
+  batchDate?: string
   notes?: string | null
   reconcileStatus: 'pending' | 'reconciled' | 'discrepancy'
   createdAt: string

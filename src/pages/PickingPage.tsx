@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
-import { acknowledgeOrderChange, getPendingOrderChanges, getPickingItems, updateOrderItemStatus } from '../api/client'
+import {
+  acknowledgeOrderChange,
+  getPendingOrderChanges,
+  getPickingItems,
+  getTripNumbers,
+  updateOrderItemStatus,
+} from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import type { PendingOrderSummary, PickingItem } from '../types'
 import { describeOrderChange } from '../utils/orderChanges'
@@ -9,10 +15,10 @@ import { WarehouseTypeBadge, PickingStatusBadge } from '../components/Badge'
 
 const warehouseOptions = ['全部', '干', '鲜', '冻']
 
-
 export default function PickingPage() {
   const { token } = useAuth()
   const [trip, setTrip] = useState('')
+  const [tripOptions, setTripOptions] = useState<string[]>([])
   const [warehouse, setWarehouse] = useState('全部')
   const [items, setItems] = useState<PickingItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -22,9 +28,38 @@ export default function PickingPage() {
   const lastLoadedAt = useRef<Date | null>(null)
   const printAreaRef = useRef<HTMLDivElement | null>(null)
 
+  // Load available trips
+  useEffect(() => {
+    if (!token) return
+    getTripNumbers(token)
+      .then((data) => setTripOptions(data.trips))
+      .catch(() => {})
+  }, [token])
+
+  // Picking progress stats
+  const progress = useMemo(() => {
+    const total = items.length
+    const picked = items.filter((i) => i.picked).length
+    const outOfStock = items.filter((i) => i.outOfStock).length
+    const remaining = total - picked - outOfStock
+    const pct = total > 0 ? Math.round((picked / total) * 100) : 0
+    return { total, picked, outOfStock, remaining, pct }
+  }, [items])
+
+  // Find alternatives for out-of-stock items (same warehouseType, different product)
+  const getAlternatives = (item: PickingItem) => {
+    return items.filter(
+      (i) =>
+        i.productId !== item.productId &&
+        i.warehouseType === item.warehouseType &&
+        !i.outOfStock &&
+        i.picked
+    ).slice(0, 3)
+  }
+
   const fetchItems = async () => {
     if (!trip.trim()) {
-      setMessage('请输入车次编号')
+      setMessage('请选择或输入车次编号')
       return
     }
     if (!token) return
@@ -50,8 +85,8 @@ export default function PickingPage() {
       setMessage(null)
       const payload =
         type === 'picked'
-          ? { picked: item.picked ? false : true, outOfStock: false }
-          : { outOfStock: item.outOfStock ? false : true, picked: false }
+          ? { picked: !item.picked, outOfStock: false }
+          : { outOfStock: !item.outOfStock, picked: false }
       const updated = await updateOrderItemStatus(item.itemId, payload, token)
       setItems((prev) => prev.map((it) => (it.itemId === item.itemId ? { ...it, ...updated } : it)))
     } catch (err) {
@@ -68,7 +103,6 @@ export default function PickingPage() {
       setMessage('无法获取拣货内容')
       return
     }
-
     try {
       const canvas = await html2canvas(printAreaRef.current, { scale: 2 })
       const imgData = canvas.toDataURL('image/png')
@@ -84,7 +118,6 @@ export default function PickingPage() {
         pdf.setFontSize(10)
         pdf.text(`导出时间：${lastLoadedAt.current.toLocaleString()}`, 14, 24)
       }
-
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       const fileName = `picking_${trip || 'unassigned'}_${warehouse}_${Date.now()}.pdf`
       pdf.save(fileName)
@@ -126,6 +159,7 @@ export default function PickingPage() {
         <h1>拣货任务</h1>
         <p>按车次和仓储类型拣货</p>
       </div>
+
       {pendingOrders.length > 0 && (
         <div className="pending-changes">
           <div className="pending-header">
@@ -139,9 +173,11 @@ export default function PickingPage() {
               <li key={order.id}>
                 <div>
                   <span>
-                    订单 #{order.id} · 客户 {order.customerId ?? '-'} · 送达 {order.deliveryDate}
+                    订单 #{order.id} · {(order as any).customerName || `客户 #${order.customerId}`} · 送达 {order.deliveryDate}
                   </span>
-                  <small>最近变更：{order.lastModifiedAt ? new Date(order.lastModifiedAt).toLocaleString() : '-'}</small>
+                  <small>
+                    最近变更：{order.lastModifiedAt ? new Date(order.lastModifiedAt).toLocaleString() : '-'}
+                  </small>
                 </div>
                 {order.changes && order.changes.length > 0 && (
                   <ul className="pending-change-details">
@@ -163,24 +199,52 @@ export default function PickingPage() {
           </ul>
         </div>
       )}
+
       <div className="filters">
-        <input placeholder="车次（如 第1车）" value={trip} onChange={(e) => setTrip(e.target.value)} />
-        <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
-          {warehouseOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
+        <select
+          value={trip}
+          onChange={(e) => setTrip(e.target.value)}
+          style={{ minWidth: '160px' }}
+        >
+          <option value="">选择车次</option>
+          {tripOptions.map((t) => (
+            <option key={t} value={t}>{t}</option>
           ))}
         </select>
-        <button type="button" onClick={fetchItems}>
-          加载拣货单
-        </button>
+        <input
+          placeholder="或手动输入车次"
+          value={trip}
+          onChange={(e) => setTrip(e.target.value)}
+          style={{ width: '150px' }}
+        />
+        <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
+          {warehouseOptions.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <button type="button" onClick={fetchItems}>加载拣货单</button>
         <button type="button" className="ghost" onClick={handleExportPdf} disabled={items.length === 0}>
           导出 PDF
         </button>
       </div>
+
       {loading && <p>加载中…</p>}
       {message && <p className="hint">{message}</p>}
+
+      {/* Progress bar */}
+      {items.length > 0 && (
+        <div className="picking-progress">
+          <div className="picking-progress-info">
+            <span>拣货进度：{progress.picked}/{progress.total} 已拣</span>
+            {progress.outOfStock > 0 && <span className="error-text"> · {progress.outOfStock} 缺货</span>}
+            <span> · {progress.remaining} 待拣</span>
+            <strong style={{ marginLeft: 'auto' }}>{progress.pct}%</strong>
+          </div>
+          <div className="dash-progress" style={{ height: '12px' }}>
+            <div className="dash-progress-fill" style={{ width: `${progress.pct}%` }} />
+          </div>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div ref={printAreaRef} className="picking-print-area">
@@ -193,7 +257,7 @@ export default function PickingPage() {
               <thead>
                 <tr>
                   <th>订单</th>
-                  <th>客户ID</th>
+                  <th>客户</th>
                   <th>商品</th>
                   <th>仓储</th>
                   <th>数量</th>
@@ -202,28 +266,34 @@ export default function PickingPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
-                  <tr key={item.itemId} className={item.outOfStock ? 'muted' : ''}>
-                    <td>#{item.orderId}</td>
-                    <td>{item.customerId ?? '-'}</td>
-                    <td>{item.productName}</td>
-                    <td><WarehouseTypeBadge type={item.warehouseType} /></td>
-                    <td>
-                      {item.qtyOrdered} {item.productUnit}
-                    </td>
-                    <td>
-                      <PickingStatusBadge picked={item.picked} outOfStock={item.outOfStock} status={item.status} />
-                    </td>
-                    <td className="admin-actions">
-                      <button type="button" onClick={() => handleMark(item, 'picked')}>
-                        {item.picked ? '取消拣货' : '标记已拣'}
-                      </button>
-                      <button type="button" className="danger" onClick={() => handleMark(item, 'outOfStock')}>
-                        {item.outOfStock ? '恢复库存' : '标记缺货'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((item) => {
+                  const alternatives = item.outOfStock ? getAlternatives(item) : []
+                  return (
+                    <tr key={item.itemId} className={item.outOfStock ? 'muted' : ''}>
+                      <td>#{item.orderId}</td>
+                      <td>{item.customerName || `#${item.customerId}`}</td>
+                      <td>
+                        {item.productName}
+                        {item.outOfStock && alternatives.length > 0 && (
+                          <div className="picking-alt-hint">
+                            可替代: {alternatives.map((a) => a.productName).join(', ')}
+                          </div>
+                        )}
+                      </td>
+                      <td><WarehouseTypeBadge type={item.warehouseType} /></td>
+                      <td>{item.qtyOrdered} {item.productUnit}</td>
+                      <td><PickingStatusBadge picked={item.picked} outOfStock={item.outOfStock} status={item.status} /></td>
+                      <td className="admin-actions">
+                        <button type="button" onClick={() => handleMark(item, 'picked')}>
+                          {item.picked ? '取消拣货' : '标记已拣'}
+                        </button>
+                        <button type="button" className="danger" onClick={() => handleMark(item, 'outOfStock')}>
+                          {item.outOfStock ? '恢复库存' : '标记缺货'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -9,6 +9,7 @@ import {
   getProductNames,
   getReceivingBatches,
   getSuppliers,
+  submitStockCount,
   updateInventoryStock,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -24,13 +25,14 @@ import SuppliersModal from '../components/SuppliersModal'
 
 const PAGE_SIZE = 50
 
-type TabKey = 'summary' | 'inbound' | 'return' | 'damage'
+type TabKey = 'summary' | 'inbound' | 'return' | 'damage' | 'stockcount'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'summary', label: '库存统计' },
   { key: 'inbound', label: '货品入库' },
   { key: 'return', label: '退货入库' },
   { key: 'damage', label: '货损' },
+  { key: 'stockcount', label: '库存盘点' },
 ]
 
 interface BatchItemRow {
@@ -90,6 +92,15 @@ export default function InventoryPage() {
   const [logsLoading, setLogsLoading] = useState(false)
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [productNames, setProductNames] = useState<string[]>([])
+
+  // Stock count state
+  const [countWarehouse, setCountWarehouse] = useState('干')
+  const [countProducts, setCountProducts] = useState<Product[]>([])
+  const [countInputs, setCountInputs] = useState<Record<number, string>>({})
+  const [countLoading, setCountLoading] = useState(false)
+  const [countResult, setCountResult] = useState<Array<{
+    productId: number; name: string; systemStock: number; actualStock: number; diff: number; adjusted: boolean
+  }> | null>(null)
 
   // Inline editing state
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -665,6 +676,160 @@ export default function InventoryPage() {
     </div>
   )
 
+  const loadCountProducts = async () => {
+    if (!token) return
+    try {
+      setCountLoading(true)
+      const data = await getInventorySummary({ limit: 500, offset: 0, warehouseType: countWarehouse }, token)
+      setCountProducts(data.items ?? [])
+      const inputs: Record<number, string> = {}
+      ;(data.items ?? []).forEach((p) => { inputs[p.id] = '' })
+      setCountInputs(inputs)
+      setCountResult(null)
+      setMessage(null)
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setCountLoading(false)
+    }
+  }
+
+  const handleCountSubmit = async () => {
+    if (!token) return
+    const entries = Object.entries(countInputs)
+      .filter(([, val]) => val !== '')
+      .map(([id, val]) => ({ productId: Number(id), actualStock: Number(val) }))
+      .filter((e) => Number.isFinite(e.actualStock) && e.actualStock >= 0)
+
+    if (entries.length === 0) {
+      setMessage('请至少填写一个商品的实际库存')
+      return
+    }
+
+    try {
+      setCountLoading(true)
+      const result = await submitStockCount(entries, countWarehouse, token)
+      setCountResult(result.items)
+      setMessage(`盘点完成：共 ${result.total} 项，调整了 ${result.adjusted} 项`)
+      await fetchInventory()
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setCountLoading(false)
+    }
+  }
+
+  const renderStockCountTab = () => (
+    <div>
+      <div className="filters">
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+          <span>仓库类型</span>
+          <select value={countWarehouse} onChange={(e) => setCountWarehouse(e.target.value)}>
+            <option value="干">干</option>
+            <option value="鲜">鲜</option>
+            <option value="冻">冻</option>
+          </select>
+        </label>
+        <button type="button" onClick={loadCountProducts} disabled={countLoading}>
+          {countLoading ? '加载中…' : '加载商品'}
+        </button>
+      </div>
+
+      {countProducts.length > 0 && (
+        <>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>品名</th>
+                  <th>单位</th>
+                  <th>系统库存</th>
+                  <th>实际库存</th>
+                  <th>差异</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countProducts.map((p) => {
+                  const input = countInputs[p.id] ?? ''
+                  const actual = input !== '' ? Number(input) : null
+                  const system = Number(p.stock) || 0
+                  const diff = actual != null ? actual - system : null
+                  return (
+                    <tr key={p.id}>
+                      <td>{p.name}</td>
+                      <td>{p.unit}</td>
+                      <td>{system}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={input}
+                          placeholder={String(system)}
+                          onChange={(e) =>
+                            setCountInputs((prev) => ({ ...prev, [p.id]: e.target.value }))
+                          }
+                          style={{ width: 100 }}
+                        />
+                      </td>
+                      <td>
+                        {diff != null && diff !== 0 && (
+                          <span style={{ color: diff > 0 ? '#059669' : 'var(--color-danger)', fontWeight: 600 }}>
+                            {diff > 0 ? `+${diff}` : diff}
+                          </span>
+                        )}
+                        {diff === 0 && <span className="muted">-</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+            <button type="button" onClick={handleCountSubmit} disabled={countLoading}>
+              {countLoading ? '提交中…' : '确认盘点'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {countResult && countResult.length > 0 && (
+        <div style={{ marginTop: '1rem' }}>
+          <h3>盘点结果</h3>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>品名</th>
+                  <th>系统库存</th>
+                  <th>实际库存</th>
+                  <th>差异</th>
+                  <th>是否调整</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countResult.map((r) => (
+                  <tr key={r.productId}>
+                    <td>{r.name}</td>
+                    <td>{r.systemStock}</td>
+                    <td>{r.actualStock}</td>
+                    <td>
+                      <span style={{ color: r.diff > 0 ? '#059669' : r.diff < 0 ? 'var(--color-danger)' : 'inherit', fontWeight: r.diff !== 0 ? 600 : 400 }}>
+                        {r.diff > 0 ? `+${r.diff}` : r.diff}
+                      </span>
+                    </td>
+                    <td>{r.adjusted ? '已调整' : '无变化'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   const renderDamageTab = () => (
     <div className="inventory-grid">
       <section className="inventory-card">
@@ -755,6 +920,7 @@ export default function InventoryPage() {
                 inbound: 'in',
                 return: 'return',
                 damage: 'damage',
+                stockcount: null,
               }
               const mapped = typeMap[tab.key]
               if (mapped) setLogsType(mapped)
@@ -769,6 +935,7 @@ export default function InventoryPage() {
       {activeTab === 'inbound' && renderInboundTab()}
       {activeTab === 'return' && renderReturnTab()}
       {activeTab === 'damage' && renderDamageTab()}
+      {activeTab === 'stockcount' && renderStockCountTab()}
     </div>
   )
 }

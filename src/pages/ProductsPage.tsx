@@ -1,15 +1,18 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   bulkDeleteProducts,
+  bulkUpdateAvailability,
+  bulkUpdatePrice,
   createOrder,
   deleteProduct,
+  getCustomers,
   getProductNames,
   getProducts,
   updateProduct,
   updateProductAvailability,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Product } from '../types'
+import type { Customer, Product } from '../types'
 import { formatMoney } from '../utils/money'
 import Pagination from '../components/Pagination'
 import SearchableFilter from '../components/SearchableFilter'
@@ -46,6 +49,15 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0)
   const [totalProducts, setTotalProducts] = useState(0)
   const [productNames, setProductNames] = useState<string[]>([])
+
+  // Admin customer selector
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+
+  // Bulk price modal
+  const [showPriceModal, setShowPriceModal] = useState(false)
+  const [priceMode, setPriceMode] = useState<'percentage' | 'fixed'>('percentage')
+  const [priceValue, setPriceValue] = useState('')
 
   const totalPages = Math.ceil(totalProducts / PAGE_SIZE)
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
@@ -102,6 +114,13 @@ export default function ProductsPage() {
     if (token) getProductNames(token).then((d) => setProductNames(d.names)).catch(() => {})
   }, [token])
 
+  // Load customers for ordering
+  useEffect(() => {
+    if (token) {
+      getCustomers(token).then((d) => setCustomers(d.items || [])).catch(() => {})
+    }
+  }, [token])
+
   // 输入自动搜索（300ms 防抖）
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -137,16 +156,19 @@ export default function ProductsPage() {
       setResult('至少填写一个商品数量')
       return
     }
+    if (!selectedCustomerId) {
+      setResult('请先选择客户')
+      return
+    }
     try {
       setSubmitting(true)
       setResult(null)
-      const response = await createOrder(
-        {
-          deliveryDate: deliveryDate,
-          items: selectedItems.map((item) => ({ productId: item.productId, qtyOrdered: item.qty })),
-        },
-        token!
-      )
+      const orderPayload: { deliveryDate: string; items: { productId: number; qtyOrdered: number }[]; customerId?: number } = {
+        deliveryDate: deliveryDate,
+        items: selectedItems.map((item) => ({ productId: item.productId, qtyOrdered: item.qty })),
+        customerId: Number(selectedCustomerId),
+      }
+      const response = await createOrder(orderPayload, token!)
 
       const summaryItems: OrderSummaryItem[] = selectedItems.map((item) => {
         const product = productMap.get(item.productId)
@@ -285,6 +307,40 @@ export default function ProductsPage() {
     }
   }
 
+  const handleBulkAvailability = async (available: boolean) => {
+    if (!token || selectedIds.size === 0) return
+    const label = available ? '上架' : '下架'
+    if (!window.confirm(`确认将选中的 ${selectedIds.size} 个商品${label}吗？`)) return
+    try {
+      setResult(null)
+      await bulkUpdateAvailability(Array.from(selectedIds), available, token)
+      setResult(`已批量${label} ${selectedIds.size} 个商品`)
+      fetchProducts()
+    } catch (err) {
+      setResult((err as Error).message)
+    }
+  }
+
+  const handleBulkPriceSubmit = async () => {
+    if (!token || selectedIds.size === 0) return
+    const val = Number(priceValue)
+    if (!Number.isFinite(val) || val === 0) {
+      setResult('请输入有效的调价数值')
+      return
+    }
+    try {
+      setResult(null)
+      await bulkUpdatePrice(Array.from(selectedIds), priceMode, val, token)
+      const modeLabel = priceMode === 'percentage' ? `${val > 0 ? '+' : ''}${val}%` : `${val > 0 ? '+' : ''}${val} 元`
+      setResult(`已批量调价 ${selectedIds.size} 个商品（${modeLabel}）`)
+      setShowPriceModal(false)
+      setPriceValue('')
+      fetchProducts()
+    } catch (err) {
+      setResult((err as Error).message)
+    }
+  }
+
   const isAdmin = user?.role === 'admin'
 
   return (
@@ -308,12 +364,54 @@ export default function ProductsPage() {
       {isAdmin && (
         <div className="admin-toolbar">
           <span>已选 {selectedIds.size} 个商品</span>
+          <button type="button" className="ghost" disabled={selectedIds.size === 0} onClick={() => handleBulkAvailability(true)}>
+            批量上架
+          </button>
+          <button type="button" className="ghost" disabled={selectedIds.size === 0} onClick={() => handleBulkAvailability(false)}>
+            批量下架
+          </button>
+          <button type="button" className="ghost" disabled={selectedIds.size === 0} onClick={() => setShowPriceModal(true)}>
+            批量调价
+          </button>
           <button type="button" className="danger" disabled={selectedIds.size === 0} onClick={handleBulkDelete}>
             批量删除
           </button>
           {editingProductId && (
             <span className="hint">正在编辑商品 #{editingProductId}</span>
           )}
+        </div>
+      )}
+
+      {/* Bulk price modal */}
+      {showPriceModal && (
+        <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>批量调价</h3>
+            <p>已选 <strong>{selectedIds.size}</strong> 个商品</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+              <label>
+                <span>调价方式</span>
+                <select value={priceMode} onChange={(e) => setPriceMode(e.target.value as 'percentage' | 'fixed')}>
+                  <option value="percentage">按百分比（%）</option>
+                  <option value="fixed">按固定金额（元）</option>
+                </select>
+              </label>
+              <label>
+                <span>{priceMode === 'percentage' ? '百分比（如 10 表示 +10%，-5 表示 -5%）' : '金额（如 2 表示 +2 元，-1 表示 -1 元）'}</span>
+                <input
+                  type="number"
+                  step={priceMode === 'percentage' ? '1' : '0.01'}
+                  placeholder={priceMode === 'percentage' ? '输入百分比' : '输入金额'}
+                  value={priceValue}
+                  onChange={(e) => setPriceValue(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={() => setShowPriceModal(false)}>取消</button>
+              <button type="button" onClick={handleBulkPriceSubmit}>确认调价</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -459,6 +557,15 @@ export default function ProductsPage() {
         <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
         <div className="submit-bar">
+          <label>
+            客户
+            <select value={selectedCustomerId} onChange={(e) => setSelectedCustomerId(e.target.value)}>
+              <option value="">选择客户</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
           <label>
             送达日期
             <input type="date" min={minDate} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />

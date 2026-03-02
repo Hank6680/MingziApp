@@ -3,11 +3,16 @@ import Navbar from './components/Navbar'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
+import DashboardPage from './pages/DashboardPage'
 import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
 import PickingPage from './pages/PickingPage'
 import InventoryPage from './pages/InventoryPage'
 import ReconciliationPage from './pages/ReconciliationPage'
+import CustomersPage from './pages/CustomersPage'
+import SuppliersPage from './pages/SuppliersPage'
+import SettingsPage from './pages/SettingsPage'
+import StaffOrderingPage from './pages/StaffOrderingPage'
 import './App.css'
 
 export default function App() {
@@ -18,7 +23,15 @@ export default function App() {
       <Navbar />
       <main>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to="/products" replace /> : <LoginPage />} />
+          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/products"
             element={
@@ -32,6 +45,30 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <OrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/staff-ordering"
+            element={
+              <ProtectedRoute roles={['staff', 'admin']}>
+                <StaffOrderingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/customers"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <CustomersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/suppliers"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <SuppliersPage />
               </ProtectedRoute>
             }
           />
@@ -59,7 +96,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/" element={<Navigate to={user ? '/products' : '/login'} replace />} />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

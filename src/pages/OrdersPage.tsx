@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   addOrderItem,
   acknowledgeOrderChange,
+  deleteOrder,
   deleteOrderItem,
+  getCustomers,
   getOrderChangeLogs,
   getOrders,
   getPendingOrderChanges,
@@ -12,13 +16,21 @@ import {
   updateOrderTrip,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Order, OrderChangeLog, OrderItem, PendingOrderSummary, Product } from '../types'
+import type { Customer, Order, OrderChangeLog, OrderItem, PendingOrderSummary, Product } from '../types'
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
 import { describeOrderChange } from '../utils/orderChanges'
 import { OrderStatusBadge, WarehouseTypeBadge, PickingStatusBadge } from '../components/Badge'
 
 const STATUSES = ['created', 'confirmed', 'shipped', 'completed', 'cancelled']
+const STATUS_LABELS: Record<string, string> = {
+  created: '已创建',
+  confirmed: '已确认',
+  shipped: '已发货',
+  completed: '已完成',
+  cancelled: '已取消',
+}
+const RISKY_STATUSES = new Set(['shipped', 'completed', 'cancelled'])
 
 const formatDeliveryDate = (value?: string | null) => {
   if (!value) return '-'
@@ -29,6 +41,14 @@ const formatDeliveryDate = (value?: string | null) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleDateString()
+}
+
+const toDateStr = (value?: string | null) => {
+  if (!value) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
 }
 
 const getLineTotals = (item: OrderItem) => {
@@ -69,6 +89,26 @@ export default function OrdersPage() {
   const [orderLogsLoading, setOrderLogsLoading] = useState<Record<number, boolean>>({})
   const [orderLogsVisible, setOrderLogsVisible] = useState<Record<number, boolean>>({})
   const [orderLogsError, setOrderLogsError] = useState<Record<number, string | null>>({})
+
+  // Customers
+  const [customers, setCustomers] = useState<Customer[]>([])
+
+  // Filters
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterCustomer, setFilterCustomer] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterTrip, setFilterTrip] = useState('')
+
+  // Confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    orderId: number
+    fromStatus: string
+    toStatus: string
+  } | null>(null)
+
+  // Delete order confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{ orderId: number; customerName: string } | null>(null)
 
   const isAdmin = user?.role === 'admin'
 
@@ -128,13 +168,83 @@ export default function OrdersPage() {
     fetchPendingOrders()
   }, [fetchPendingOrders])
 
+  // Auto-refresh when page regains focus (e.g. switching tabs or navigating back)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchOrders()
+      if (isAdmin) fetchPendingOrders()
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, isAdmin])
+
+  // Load customers for name mapping
+  useEffect(() => {
+    if (token && isAdmin) {
+      getCustomers(token).then((d) => setCustomers(d.items || [])).catch(() => {})
+    }
+  }, [token, isAdmin])
+
   useEffect(() => {
     if (editingOrderId && isAdmin) {
       loadProducts()
     }
   }, [editingOrderId, isAdmin, loadProducts])
 
-  const handleStatusChange = async (orderId: number, status: string) => {
+  // Client-side filtering
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      if (filterStatus && order.status !== filterStatus) return false
+      if (filterCustomer && String(order.customerId) !== filterCustomer.trim()) return false
+      if (filterTrip) {
+        const trip = (order.tripNumber ?? '').toLowerCase()
+        if (!trip.includes(filterTrip.trim().toLowerCase())) return false
+      }
+      const orderDate = toDateStr(order.deliveryDate)
+      if (filterDateFrom && orderDate < filterDateFrom) return false
+      if (filterDateTo && orderDate > filterDateTo) return false
+      return true
+    })
+  }, [orders, filterStatus, filterCustomer, filterTrip, filterDateFrom, filterDateTo])
+
+  const customerMap = useMemo(() => {
+    const map = new Map<number, string>()
+    customers.forEach((c) => map.set(c.id, c.name))
+    return map
+  }, [customers])
+
+  const getCustomerDisplay = (order: Order) =>
+    order.customerName || customerMap.get(order.customerId) || `客户 #${order.customerId}`
+
+  const hasActiveFilters = filterStatus || filterCustomer || filterDateFrom || filterDateTo || filterTrip
+
+  const resetFilters = () => {
+    setFilterStatus('')
+    setFilterCustomer('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterTrip('')
+  }
+
+  // Unique trip numbers for reference
+  const tripNumbers = useMemo(() => {
+    const trips = new Set<string>()
+    orders.forEach((o) => { if (o.tripNumber) trips.add(o.tripNumber) })
+    return [...trips].sort()
+  }, [orders])
+
+  const handleStatusChange = (orderId: number, newStatus: string) => {
+    const order = orders.find((o) => o.id === orderId)
+    if (!order || order.status === newStatus) return
+    if (RISKY_STATUSES.has(newStatus)) {
+      setConfirmDialog({ orderId, fromStatus: order.status, toStatus: newStatus })
+    } else {
+      doStatusChange(orderId, newStatus)
+    }
+  }
+
+  const doStatusChange = async (orderId: number, status: string) => {
     if (!token) return
     try {
       await updateOrderStatus(orderId, status, token)
@@ -144,6 +254,92 @@ export default function OrdersPage() {
     } catch (err) {
       setMessage((err as Error).message)
     }
+  }
+
+  const confirmStatusChange = () => {
+    if (!confirmDialog) return
+    doStatusChange(confirmDialog.orderId, confirmDialog.toStatus)
+    setConfirmDialog(null)
+  }
+
+  const handleDeleteOrder = async () => {
+    if (!token || !deleteConfirm) return
+    try {
+      await deleteOrder(deleteConfirm.orderId, token)
+      setMessage(`订单 #${deleteConfirm.orderId} 已删除`)
+      setDeleteConfirm(null)
+      await Promise.all([fetchOrders(), fetchPendingOrders()])
+    } catch (err) {
+      setMessage((err as Error).message)
+      setDeleteConfirm(null)
+    }
+  }
+
+  // Generate delivery note PDF for a trip
+  const generateDeliveryNote = (tripNumber: string) => {
+    const tripOrders = filteredOrders.filter((o) => o.tripNumber === tripNumber)
+    if (tripOrders.length === 0) {
+      setMessage('该车次无订单')
+      return
+    }
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const now = new Date().toLocaleString('zh-CN')
+    let yPos = 15
+
+    doc.setFontSize(16)
+    doc.text(`配送单 - ${tripNumber}`, 14, yPos)
+    yPos += 8
+    doc.setFontSize(9)
+    doc.text(`打印时间：${now}`, 14, yPos)
+    yPos += 10
+
+    tripOrders.forEach((order, idx) => {
+      if (idx > 0) yPos += 5
+      doc.setFontSize(11)
+      const custName = order.customerName || customerMap.get(order.customerId) || String(order.customerId)
+      doc.text(`订单 #${order.id} | 客户: ${custName} | 送达: ${formatDeliveryDate(order.deliveryDate)}`, 14, yPos)
+      yPos += 2
+
+      const rows = (order.items || []).map((item) => {
+        const { unitPrice, lineTotal } = getLineTotals(item)
+        return [
+          item.productName ?? String(item.productId),
+          item.productUnit ?? '',
+          String(item.qtyOrdered),
+          unitPrice.toFixed(2),
+          lineTotal.toFixed(2),
+        ]
+      })
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['商品', '单位', '数量', '单价', '小计']],
+        body: rows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [45, 122, 79] },
+        margin: { left: 14, right: 14 },
+      })
+
+      yPos = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3
+      const total = computeOrderTotal(order.items)
+      doc.setFontSize(9)
+      ;(doc as any).text(`小计：${total.toFixed(2)} 元`, 160, yPos, { align: 'right' })
+      yPos += 8
+
+      // Signature line
+      doc.setFontSize(8)
+      doc.text('签收人：________________  日期：________________', 14, yPos)
+      yPos += 8
+
+      if (yPos > 260 && idx < tripOrders.length - 1) {
+        ;(doc as any).addPage()
+        yPos = 15
+      }
+    })
+
+    doc.save(`delivery_${tripNumber}_${Date.now()}.pdf`)
+    setMessage(`配送单已生成：${tripNumber}`)
   }
 
   const handleTripChange = (orderId: number, value: string) => {
@@ -316,13 +512,122 @@ export default function OrdersPage() {
       <div className="orders-header">
         <div className="page-header">
           <h1>订单列表</h1>
-          <p>查看和管理所有订单</p>
+          <p>查看和管理所有订单（共 {orders.length} 单{hasActiveFilters ? `，筛选后 ${filteredOrders.length} 单` : ''}）</p>
         </div>
         <button onClick={fetchOrders}>刷新</button>
       </div>
       {loading && <p>加载中…</p>}
       {error && <p className="error-text">{error}</p>}
       {message && <p className="hint">{message}</p>}
+
+      {/* Filters */}
+      {isAdmin && (
+        <div className="order-filters">
+          <div className="order-filters-row">
+            <label className="filter-item">
+              <span>状态</span>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">全部状态</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-item">
+              <span>客户</span>
+              <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)}>
+                <option value="">全部客户</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-item">
+              <span>配送日期从</span>
+              <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+            </label>
+            <label className="filter-item">
+              <span>配送日期至</span>
+              <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </label>
+            <label className="filter-item">
+              <span>车次</span>
+              <select value={filterTrip} onChange={(e) => setFilterTrip(e.target.value)}>
+                <option value="">全部车次</option>
+                {tripNumbers.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            {hasActiveFilters && (
+              <button type="button" className="ghost filter-reset-btn" onClick={resetFilters}>
+                重置筛选
+              </button>
+            )}
+            {filterTrip && (
+              <button type="button" onClick={() => generateDeliveryNote(filterTrip)}>
+                打印配送单
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation dialog */}
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>确认状态变更</h3>
+            <p>
+              确定将订单 <strong>#{confirmDialog.orderId}</strong> 的状态从
+              <span className={`badge badge-${confirmDialog.fromStatus}`} style={{ margin: '0 0.4rem' }}>
+                {STATUS_LABELS[confirmDialog.fromStatus] || confirmDialog.fromStatus}
+              </span>
+              变更为
+              <span className={`badge badge-${confirmDialog.toStatus}`} style={{ margin: '0 0.4rem' }}>
+                {STATUS_LABELS[confirmDialog.toStatus] || confirmDialog.toStatus}
+              </span>
+              ？
+            </p>
+            {confirmDialog.toStatus === 'shipped' && (
+              <p className="modal-warning">发货后将扣减库存，且订单将无法编辑。</p>
+            )}
+            {confirmDialog.toStatus === 'completed' && (
+              <p className="modal-warning">完成后订单将关闭，且库存将被扣减（如未扣减）。</p>
+            )}
+            {confirmDialog.toStatus === 'cancelled' && (
+              <p className="modal-warning">取消后订单将无法恢复。</p>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={() => setConfirmDialog(null)}>取消</button>
+              <button
+                type="button"
+                className={confirmDialog.toStatus === 'cancelled' ? 'danger' : ''}
+                onClick={confirmStatusChange}
+              >
+                确认变更
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete order confirmation dialog */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>确认删除订单</h3>
+            <p>
+              确定要删除订单 <strong>#{deleteConfirm.orderId}</strong>（{deleteConfirm.customerName}）吗？
+            </p>
+            <p className="modal-warning">删除后订单及其所有商品明细将被永久移除，无法恢复。</p>
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={() => setDeleteConfirm(null)}>取消</button>
+              <button type="button" className="danger" onClick={handleDeleteOrder}>确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <section className="pending-changes-panel">
@@ -350,7 +655,7 @@ export default function OrdersPage() {
                   <div className="pending-order-meta">
                     <div>
                       <span>
-                        订单 #{pending.id} · 客户 {pending.customerId ?? '-'} · 送达 {formatDeliveryDate(pending.deliveryDate)}
+                        订单 #{pending.id} · {pending.customerName || customerMap.get(pending.customerId) || `客户 #${pending.customerId}`} · 送达 {formatDeliveryDate(pending.deliveryDate)}
                       </span>
                       <small>最近变更：{pending.lastModifiedAt ? new Date(pending.lastModifiedAt).toLocaleString() : '-'}</small>
                     </div>
@@ -386,18 +691,18 @@ export default function OrdersPage() {
         </section>
       )}
 
-      {orders.length === 0 ? (
-        <p>暂无订单。</p>
+      {filteredOrders.length === 0 ? (
+        <p>{hasActiveFilters ? '没有符合筛选条件的订单。' : '暂无订单。'}</p>
       ) : (
         <div className="orders">
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
             <div key={order.id}>
               <div className="order-card">
                 <div className="order-head">
                   <div>
                     <strong>订单 #{order.id}</strong>
                     {order.pendingReview ? <span className="badge warning">待确认变更</span> : null}
-                    <p>客户 ID: {order.customerId ?? '未知'}</p>
+                    <p>客户: {getCustomerDisplay(order)}</p>
                     <p>送达日期: {formatDeliveryDate(order.deliveryDate)}</p>
                     {order.lastModifiedAt && <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>}
                   </div>
@@ -432,21 +737,31 @@ export default function OrdersPage() {
                           <button type="button" className="ghost" onClick={() => toggleOrderLogs(order.id)}>
                             {orderLogsVisible[order.id] ? '隐藏变更日志' : '查看变更日志'}
                           </button>
+                          {!['shipped', 'completed', 'cancelled'].includes(order.status) && (
+                            <button
+                              type="button"
+                              className="danger"
+                              onClick={() => setDeleteConfirm({ orderId: order.id, customerName: getCustomerDisplay(order) })}
+                            >
+                              删除订单
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
                   </div>
                 </div>
+              <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
                     <th>商品</th>
                     <th>单位</th>
                     <th>数量</th>
-                    <th>仓储</th>
+                    <th className="hide-mobile">仓储</th>
                     <th>单价</th>
                     <th>小计</th>
-                    <th>拣货状态</th>
+                    <th className="hide-mobile">拣货状态</th>
                     {isAdmin && editingOrderId === order.id && <th>操作</th>}
                   </tr>
                 </thead>
@@ -475,7 +790,7 @@ export default function OrdersPage() {
                             item.qtyOrdered
                           )}
                         </td>
-                        <td><WarehouseTypeBadge type={item.productWarehouseType} /></td>
+                        <td className="hide-mobile"><WarehouseTypeBadge type={item.productWarehouseType} /></td>
                         <td>
                           {isRowEditable ? (
                             <input
@@ -489,7 +804,7 @@ export default function OrdersPage() {
                           )}
                         </td>
                         <td>{formatMoney(lineTotal)}</td>
-                        <td>
+                        <td className="hide-mobile">
                           <PickingStatusBadge picked={item.picked} outOfStock={item.outOfStock} status={item.status} />
                         </td>
                         {isAdmin && editingOrderId === order.id && (
@@ -513,6 +828,7 @@ export default function OrdersPage() {
                   })}
                 </tbody>
               </table>
+              </div>
               {isAdmin && editingOrderId === order.id && (
                 <div className="order-add-item">
                   <h4>添加商品</h4>

@@ -57,16 +57,20 @@ const fetchItemsForOrder = (orderId) =>
 
 const fetchOrderWithItems = (orderId) =>
   new Promise((resolve, reject) => {
-    db.get("SELECT * FROM orders WHERE id = ?", [orderId], async (err, order) => {
-      if (err) return reject(err)
-      if (!order) return resolve(null)
-      try {
-        const items = await fetchItemsForOrder(order.id)
-        resolve({ ...order, items })
-      } catch (itemsErr) {
-        reject(itemsErr)
+    db.get(
+      "SELECT o.*, c.name as customerName FROM orders o LEFT JOIN customers c ON c.id = o.customerId WHERE o.id = ?",
+      [orderId],
+      async (err, order) => {
+        if (err) return reject(err)
+        if (!order) return resolve(null)
+        try {
+          const items = await fetchItemsForOrder(order.id)
+          resolve({ ...order, items })
+        } catch (itemsErr) {
+          reject(itemsErr)
+        }
       }
-    })
+    )
   })
 
 const validateDeliveryDate = (deliveryDate) => {
@@ -199,7 +203,7 @@ router.get("/", (req, res, next) => {
   const params = []
   let targetCustomerId = req.user.customerId
 
-  if (req.user.role === "admin" && req.query.customerId) {
+  if ((req.user.role === "admin" || req.user.role === "staff") && req.query.customerId) {
     const parsed = Number(req.query.customerId)
     if (!Number.isFinite(parsed) || parsed < 0) {
       return next(httpError(400, "customerId must be a positive number", "VALIDATION_ERROR"))
@@ -207,22 +211,45 @@ router.get("/", (req, res, next) => {
     targetCustomerId = parsed
   }
 
-  if (req.user.role !== "admin") {
+  // staff and admin can view all orders (no customerId filter required)
+  if (req.user.role !== "admin" && req.user.role !== "staff") {
     if (!Number.isFinite(targetCustomerId)) {
       return next(httpError(400, "User is missing customerId", "VALIDATION_ERROR"))
     }
   }
 
   if (Number.isFinite(targetCustomerId)) {
-    filters.push("customerId = ?")
+    filters.push("o.customerId = ?")
     params.push(targetCustomerId)
   }
 
-  let query = "SELECT * FROM orders"
+  // Filter by tripNumber
+  if (req.query.tripNumber) {
+    filters.push("o.tripNumber = ?")
+    params.push(String(req.query.tripNumber).trim())
+  }
+
+  // Filter by status
+  if (req.query.status && allowedStatuses.has(req.query.status)) {
+    filters.push("o.status = ?")
+    params.push(req.query.status)
+  }
+
+  // Filter by delivery date range
+  if (req.query.dateFrom) {
+    filters.push("date(o.deliveryDate) >= date(?)")
+    params.push(req.query.dateFrom)
+  }
+  if (req.query.dateTo) {
+    filters.push("date(o.deliveryDate) <= date(?)")
+    params.push(req.query.dateTo)
+  }
+
+  let query = "SELECT o.*, c.name as customerName FROM orders o LEFT JOIN customers c ON c.id = o.customerId"
   if (filters.length) {
     query += ` WHERE ${filters.join(" AND ")}`
   }
-  query += " ORDER BY id DESC"
+  query += " ORDER BY o.id DESC"
 
   db.all(query, params, (err, orders) => {
     if (err) {
@@ -251,10 +278,11 @@ router.get("/picking", requireAdmin, async (req, res, next) => {
   }
 
   const params = [trip.trim()]
-  let sql = `SELECT oi.id as itemId, oi.orderId, o.customerId, o.tripNumber, oi.productId, oi.qtyOrdered, oi.picked, oi.outOfStock, oi.status,
+  let sql = `SELECT oi.id as itemId, oi.orderId, o.customerId, c.name as customerName, o.tripNumber, oi.productId, oi.qtyOrdered, oi.picked, oi.outOfStock, oi.status,
     p.name as productName, p.unit as productUnit, p.warehouseType, p.price
     FROM order_items oi
     JOIN orders o ON o.id = oi.orderId
+    LEFT JOIN customers c ON c.id = o.customerId
     JOIN products p ON p.id = oi.productId
     WHERE o.tripNumber = ?`
 
@@ -282,7 +310,7 @@ router.get("/:id", async (req, res, next) => {
     if (!order) {
       return next(httpError(404, "Order not found", "NOT_FOUND"))
     }
-    if (req.user.role !== "admin" && order.customerId !== req.user.customerId) {
+    if (req.user.role !== "admin" && req.user.role !== "staff" && order.customerId !== req.user.customerId) {
       return next(httpError(403, "Not allowed to view this order", "AUTH_FORBIDDEN"))
     }
     return res.json(order)
@@ -323,7 +351,7 @@ router.post("/", async (req, res, next) => {
 
   // 3. Determine customerId
   let effectiveCustomerId = req.user.customerId
-  if (req.user.role === "admin" && bodyCustomerId != null) {
+  if (bodyCustomerId != null) {
     const parsed = Number(bodyCustomerId)
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return next(httpError(400, "customerId must be a positive integer", "VALIDATION_ERROR"))
@@ -334,9 +362,19 @@ router.post("/", async (req, res, next) => {
     return next(httpError(400, "No customerId available for order", "VALIDATION_ERROR"))
   }
 
+  // Validate customer exists
+  try {
+    const customer = await dbGet("SELECT id FROM customers WHERE id = ?", [effectiveCustomerId])
+    if (!customer) {
+      return next(httpError(400, "Customer not found", "VALIDATION_ERROR"))
+    }
+  } catch (err) {
+    return next(err)
+  }
+
   try {
     let existingOrderId = null
-    const shouldAutoMerge = req.user.role !== "admin"
+    const shouldAutoMerge = req.user.role === "customer"
     if (shouldAutoMerge) {
       const existing = await dbGet(
         `SELECT id FROM orders
@@ -448,9 +486,10 @@ router.post("/", async (req, res, next) => {
 router.get("/pending/changes", requireAdmin, async (_req, res, next) => {
   try {
     const orders = await dbAll(
-      `SELECT * FROM orders
-       WHERE pendingReview = 1 AND status IN ('created','confirmed')
-       ORDER BY datetime(lastModifiedAt) DESC`
+      `SELECT o.*, c.name as customerName FROM orders o
+       LEFT JOIN customers c ON c.id = o.customerId
+       WHERE o.pendingReview = 1 AND o.status IN ('created','confirmed')
+       ORDER BY datetime(o.lastModifiedAt) DESC`
     )
 
     if (!orders.length) {
@@ -503,6 +542,38 @@ router.get("/:id/change-logs", requireAdmin, async (req, res, next) => {
     )
     const items = logs.map((row) => ({ ...row, detail: parseChangeDetail(row.detail) }))
     return res.json({ items })
+  } catch (err) {
+    return next(err)
+  }
+})
+
+router.delete("/:id", requireAdmin, async (req, res, next) => {
+  const orderId = Number(req.params.id)
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const order = await dbGet("SELECT * FROM orders WHERE id = ?", [orderId])
+    if (!order) {
+      return next(httpError(404, "Order not found", "NOT_FOUND"))
+    }
+
+    if (lockedStatuses.has(order.status)) {
+      return next(httpError(409, "已发货/已完成/已取消的订单无法删除", "ORDER_LOCKED"))
+    }
+
+    await dbRun("BEGIN IMMEDIATE")
+    try {
+      await dbRun("DELETE FROM order_items WHERE orderId = ?", [orderId])
+      await dbRun("DELETE FROM order_change_logs WHERE orderId = ?", [orderId])
+      await dbRun("DELETE FROM orders WHERE id = ?", [orderId])
+      await dbRun("COMMIT")
+      return res.json({ success: true, deletedOrderId: orderId })
+    } catch (txErr) {
+      await dbRun("ROLLBACK").catch(() => {})
+      throw txErr
+    }
   } catch (err) {
     return next(err)
   }
@@ -822,6 +893,140 @@ router.patch("/items/:id/status", async (req, res, next) => {
       }
     )
   })
+})
+
+// ─── Batch create orders (staff) ──────────────────────────────────────────────
+
+const { requireStaffOrAdmin } = require("../middleware/auth")
+
+router.post("/batch", requireStaffOrAdmin, async (req, res, next) => {
+  const { orders: batchOrders } = req.body || {}
+
+  if (!Array.isArray(batchOrders) || batchOrders.length === 0) {
+    return next(httpError(400, "orders array is required", "VALIDATION_ERROR"))
+  }
+
+  try {
+    // Pre-validate all orders
+    const validated = []
+    for (let oi = 0; oi < batchOrders.length; oi++) {
+      const order = batchOrders[oi]
+      const { customerId, deliveryDate, items } = order
+
+      if (!Number.isFinite(Number(customerId)) || Number(customerId) <= 0) {
+        return next(httpError(400, `Order ${oi + 1}: invalid customerId`, "VALIDATION_ERROR"))
+      }
+
+      let normalizedDate
+      try {
+        normalizedDate = validateDeliveryDate(deliveryDate)
+      } catch (err) {
+        return next(httpError(400, `Order ${oi + 1}: ${err.message}`, "VALIDATION_ERROR"))
+      }
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return next(httpError(400, `Order ${oi + 1}: items are required`, "VALIDATION_ERROR"))
+      }
+
+      // Fetch & validate products
+      const productIds = [...new Set(items.map((item) => Number(item.productId)))]
+      const placeholders = productIds.map(() => "?").join(",")
+      const products = await dbAll(
+        `SELECT id, name, unit, price, isAvailable FROM products WHERE id IN (${placeholders})`,
+        productIds
+      )
+
+      if (products.length !== productIds.length) {
+        return next(httpError(400, `Order ${oi + 1}: some products do not exist`, "VALIDATION_ERROR"))
+      }
+
+      const productMap = products.reduce((acc, p) => { acc[p.id] = p; return acc }, {})
+
+      const validatedItems = []
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        const productId = Number(item.productId)
+        const product = productMap[productId]
+        const qty = Number(item.qtyOrdered)
+
+        if (!product.isAvailable) {
+          return next(httpError(400, `Order ${oi + 1}, item ${i + 1}: 商品「${product.name}」当前不可订购`, "PRODUCT_UNAVAILABLE"))
+        }
+
+        const qtyError = validateQty(product.unit, qty)
+        if (qtyError) {
+          return next(httpError(400, `Order ${oi + 1}, item ${i + 1}: ${qtyError}`, "INVALID_QUANTITY"))
+        }
+
+        const itemUnitPrice = item.unitPrice != null && Number.isFinite(Number(item.unitPrice)) && Number(item.unitPrice) > 0
+          ? Number(item.unitPrice)
+          : product.price
+
+        validatedItems.push({
+          productId,
+          qtyOrdered: qty,
+          unitPrice: itemUnitPrice,
+          productName: product.name,
+          unit: product.unit,
+        })
+      }
+
+      validated.push({
+        customerId: Number(customerId),
+        deliveryDate: normalizedDate,
+        items: validatedItems,
+      })
+    }
+
+    // Write all in a single transaction
+    await dbRun("BEGIN IMMEDIATE")
+
+    try {
+      const createdOrders = []
+
+      for (const order of validated) {
+        const totalAmount =
+          Math.round(
+            order.items.reduce((sum, item) => sum + item.qtyOrdered * item.unitPrice, 0) * 100
+          ) / 100
+
+        const result = await dbRun(
+          "INSERT INTO orders (customerId, deliveryDate, status, totalAmount) VALUES (?, ?, ?, ?)",
+          [order.customerId, order.deliveryDate, "created", totalAmount]
+        )
+        const orderId = result.lastID
+
+        for (const item of order.items) {
+          await dbRun(
+            "INSERT INTO order_items (orderId, productId, qtyOrdered, qtyPicked, unitPrice, status) VALUES (?, ?, ?, 0, ?, 'created')",
+            [orderId, item.productId, item.qtyOrdered, item.unitPrice]
+          )
+        }
+
+        await recalcOrderTotal(orderId)
+        await recordOrderChange(orderId, "order_created", {
+          items: order.items.map((item) => ({
+            productId: item.productId,
+            productName: item.productName,
+            unit: item.unit,
+            qtyOrdered: item.qtyOrdered,
+            unitPrice: item.unitPrice,
+          })),
+          batchCreated: true,
+        })
+
+        createdOrders.push({ orderId, customerId: order.customerId, deliveryDate: order.deliveryDate })
+      }
+
+      await dbRun("COMMIT")
+      return res.status(201).json({ orders: createdOrders, count: createdOrders.length })
+    } catch (txErr) {
+      await dbRun("ROLLBACK").catch(() => {})
+      throw txErr
+    }
+  } catch (err) {
+    return next(err)
+  }
 })
 
 module.exports = router
