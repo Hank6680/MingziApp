@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdminOrManagerOrManager } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManager } = require("../middleware/auth")
 
 const router = express.Router()
 const boxUnits = new Set(["箱", "桶", "包"])

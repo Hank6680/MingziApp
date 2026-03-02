@@ -1,7 +1,7 @@
 const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
-const { requireAuth, requireAdminOrManagerOrManager, requireStaffOrAdmin } = require("../middleware/auth")
+const { requireAuth, requireAdminOrManager, requireStaffOrAdmin } = require("../middleware/auth")
 
 const router = express.Router()
 
