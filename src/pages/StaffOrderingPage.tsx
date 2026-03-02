@@ -10,7 +10,7 @@ import {
   createCustomer,
 } from '../api/client'
 import type { FrequentProduct } from '../api/client'
-import type { Customer, Product } from '../types'
+import type { CartItem, Customer, CustomerCart, Product } from '../types'
 
 type MobileTab = 'customers' | 'products' | 'cart'
 
@@ -248,7 +248,7 @@ export default function StaffOrderingPage() {
 
   // --- Submit all ---
   const handleSubmitAll = async () => {
-    const cartEntries = Object.values(carts).filter((c) => c.items.length > 0)
+    const cartEntries = (Object.values(carts) as CustomerCart[]).filter((c) => c.items.length > 0)
     if (cartEntries.length === 0) {
       showMsg('error', '购物车为空')
       return
@@ -257,7 +257,7 @@ export default function StaffOrderingPage() {
     const batchOrders = cartEntries.map((cart) => ({
       customerId: cart.customerId,
       deliveryDate: cart.deliveryDate,
-      items: cart.items.map((item) => ({
+      items: cart.items.map((item: CartItem) => ({
         productId: item.productId,
         qtyOrdered: item.qty,
         unitPrice: item.price,
@@ -680,9 +680,9 @@ export default function StaffOrderingPage() {
           购物车为空
         </div>
       ) : (
-        Object.values(carts).filter((c) => c.items.length > 0).map((cart) => {
+        (Object.values(carts) as CustomerCart[]).filter((c) => c.items.length > 0).map((cart) => {
           const isExpanded = expandedCarts.has(cart.customerId)
-          const subtotal = cart.items.reduce((s, i) => s + i.qty * i.price, 0)
+          const subtotal = cart.items.reduce((s: number, i: CartItem) => s + i.qty * i.price, 0)
           return (
             <div
               key={cart.customerId}
@@ -727,7 +727,7 @@ export default function StaffOrderingPage() {
                   </div>
 
                   {/* Items */}
-                  {cart.items.map((item) => (
+                  {cart.items.map((item: CartItem) => (
                     <div
                       key={item.productId}
                       style={{

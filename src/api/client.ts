@@ -11,7 +11,6 @@ import type {
   ReceivingBatch,
   SupplierInvoice,
   SupplierInvoiceItem,
-  CustomerCart,
 } from '../types'
 
 const API_BASE =
