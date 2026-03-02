@@ -1209,6 +1209,9 @@ table tbody tr:hover {
     top: 0;
     z-index: 1000;
     flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    overflow: visible;
   }
 
   .app-header .nav-links {
@@ -1225,6 +1228,7 @@ table tbody tr:hover {
     flex-direction: column;
     order: 10;
     padding-bottom: 0.5rem;
+    background-color: var(--bg-nav);
   }
 
   .app-header .nav-links a,
