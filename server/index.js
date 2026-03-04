@@ -46,6 +46,7 @@ app.use("/api/supplier-invoices", require("./routes/supplier-invoices"))
 app.use("/api/backup", require("./routes/backup"))
 app.use("/api/dashboard", require("./routes/dashboard"))
 app.use("/api/system", require("./routes/system"))
+app.use("/api/reports", require("./routes/reports"))
 
 app.use((req, _res, next) => {
   next(httpError(404, `Route ${req.method} ${req.originalUrl} not found`, "NOT_FOUND"))

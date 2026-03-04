@@ -233,6 +233,11 @@ db.serialize(() => {
     )
   `)
 
+  // Extra audit_logs columns for agent integration
+  ensureColumn("audit_logs", "targetDate", "TEXT")
+  ensureColumn("audit_logs", "triggeredBy", "TEXT", "'human'")
+  ensureColumn("audit_logs", "userId", "INTEGER")
+
   ensureColumn("inventory_logs", "batchId", "INTEGER")
 
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {

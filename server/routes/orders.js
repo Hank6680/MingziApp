@@ -2,6 +2,7 @@ const express = require("express")
 const db = require("../db")
 const httpError = require("../utils/httpError")
 const { requireAuth, requireAdminOrManager } = require("../middleware/auth")
+const { logAudit } = require("../middleware/audit")
 
 const router = express.Router()
 const boxUnits = new Set(["箱", "桶", "包"])
@@ -299,6 +300,36 @@ router.get("/picking", requireAdminOrManager, async (req, res, next) => {
   }
 })
 
+router.post("/batch-confirm", requireAdminOrManager, async (req, res, next) => {
+  const { deliveryDate } = req.body || {}
+  if (!deliveryDate) {
+    return next(httpError(400, "deliveryDate is required", "VALIDATION_ERROR"))
+  }
+
+  try {
+    const rows = await dbAll(
+      "SELECT id FROM orders WHERE date(deliveryDate) = date(?) AND status = 'created'",
+      [deliveryDate]
+    )
+    const orderIds = rows.map((r) => r.id)
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => "?").join(",")
+      await dbRun(
+        `UPDATE orders SET status = 'confirmed' WHERE id IN (${placeholders})`,
+        orderIds
+      )
+      orderIds.forEach((id) => {
+        logAudit(req, { action: "order.status", targetType: "order", targetId: id, targetDate: deliveryDate, details: { status: "confirmed", batch: true } })
+      })
+    }
+
+    return res.json({ confirmed: orderIds.length, orderIds })
+  } catch (err) {
+    return next(err)
+  }
+})
+
 router.get("/:id", async (req, res, next) => {
   const orderId = Number(req.params.id)
   if (!Number.isFinite(orderId)) {
@@ -473,6 +504,7 @@ router.post("/", async (req, res, next) => {
       })
       await dbRun("COMMIT")
 
+      logAudit(req, { action: existingOrderId ? "order.merge" : "order.create", targetType: "order", targetId: orderId, targetDate: normalizedDeliveryDate, details: { totalAmount: updatedTotal, itemCount: validatedItems.length } })
       return res.status(existingOrderId ? 200 : 201).json({ orderId, totalAmount: updatedTotal, merged: Boolean(existingOrderId) })
     } catch (txErr) {
       await dbRun("ROLLBACK").catch(() => {})
@@ -569,6 +601,7 @@ router.delete("/:id", requireAdminOrManager, async (req, res, next) => {
       await dbRun("DELETE FROM order_change_logs WHERE orderId = ?", [orderId])
       await dbRun("DELETE FROM orders WHERE id = ?", [orderId])
       await dbRun("COMMIT")
+      logAudit(req, { action: "order.delete", targetType: "order", targetId: orderId, targetDate: order.deliveryDate })
       return res.json({ success: true, deletedOrderId: orderId })
     } catch (txErr) {
       await dbRun("ROLLBACK").catch(() => {})
@@ -657,6 +690,7 @@ router.patch("/:id/status", requireAdminOrManager, async (req, res, next) => {
     await dbRun("COMMIT")
 
     const order = await fetchOrderWithItems(orderId)
+    logAudit(req, { action: "order.status", targetType: "order", targetId: orderId, details: { status } })
     return res.json(order)
   } catch (err) {
     await dbRun("ROLLBACK").catch(() => {})
@@ -696,6 +730,7 @@ router.patch("/:id/trip", requireAdminOrManager, async (req, res, next) => {
     }
     try {
       const order = await fetchOrderWithItems(orderId)
+      logAudit(req, { action: "order.trip", targetType: "order", targetId: orderId, details: { tripNumber: normalized } })
       return res.json(order)
     } catch (fetchErr) {
       return next(fetchErr)
@@ -889,6 +924,7 @@ router.patch("/items/:id/status", async (req, res, next) => {
         if (fetchErr) {
           return next(fetchErr)
         }
+        logAudit(req, { action: "item.status", targetType: "order_item", targetId: itemId, details: { picked, outOfStock } })
         return res.json(row)
       }
     )
