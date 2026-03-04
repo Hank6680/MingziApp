@@ -2,9 +2,7 @@ const jwt = require("jsonwebtoken")
 const httpError = require("../utils/httpError")
 
 const JWT_SECRET = process.env.JWT_SECRET || "mingzi-dev-secret"
-const TOKEN_TTL = "7d"
-
-const issueToken = (payload) => jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL })
+const issueToken = (payload) => jwt.sign(payload, JWT_SECRET)
 
 const authenticate = (options = { required: true }) => (req, _res, next) => {
   const authHeader = req.headers.authorization || ""
