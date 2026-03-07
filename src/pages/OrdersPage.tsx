@@ -14,6 +14,7 @@ import {
   updateOrderTrip,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import type { Customer, Order, OrderChangeLog, OrderItem, PendingOrderSummary, Product } from '../types'
 import { INVENTORY_REFRESH_EVENT } from '../constants/events'
 import { formatMoney } from '../utils/money'
@@ -66,10 +67,10 @@ const computeOrderTotal = (items?: OrderItem[]) =>
 
 export default function OrdersPage() {
   const { token, user } = useAuth()
+  const { showToast } = useToast()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const [tripInputs, setTripInputs] = useState<Record<number, string>>({})
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null)
   const [editQuantities, setEditQuantities] = useState<Record<number, string>>({})
@@ -77,7 +78,8 @@ export default function OrdersPage() {
   const [newItemForm, setNewItemForm] = useState({ productId: '', qty: '', unitPrice: '' })
   const [productsCache, setProductsCache] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(false)
-  const [adminMessage, setAdminMessage] = useState<string | null>(null)
+  // Per-card "more" dropdown
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
   const [pendingOrders, setPendingOrders] = useState<PendingOrderSummary[]>([])
   const [pendingLoading, setPendingLoading] = useState(false)
   const [pendingError, setPendingError] = useState<string | null>(null)
@@ -253,11 +255,11 @@ export default function OrdersPage() {
     if (!token) return
     try {
       await updateOrderStatus(orderId, status, token)
-      setMessage('状态已更新')
+      showToast('success', '状态已更新')
       window.dispatchEvent(new CustomEvent(INVENTORY_REFRESH_EVENT))
       fetchOrders()
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     }
   }
 
@@ -271,11 +273,11 @@ export default function OrdersPage() {
     if (!token || !deleteConfirm) return
     try {
       await deleteOrder(deleteConfirm.orderId, token)
-      setMessage(`订单 #${deleteConfirm.orderId} 已删除`)
+      showToast('success', `订单 #${deleteConfirm.orderId} 已删除`)
       setDeleteConfirm(null)
       await Promise.all([fetchOrders(), fetchPendingOrders()])
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
       setDeleteConfirm(null)
     }
   }
@@ -363,10 +365,10 @@ export default function OrdersPage() {
     if (!token) return
     try {
       await updateOrderTrip(orderId, tripInputs[orderId]?.trim() || null, token)
-      setMessage('车次已更新')
+      showToast('success', '车次已更新')
       fetchOrders()
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     }
   }
 
@@ -434,14 +436,14 @@ export default function OrdersPage() {
         payload.unitPrice = Number(priceVal)
       }
       if (!payload.qtyOrdered && !payload.unitPrice) {
-        setAdminMessage('无需保存：没有变化')
+        showToast('info', '无需保存：没有变化')
         return
       }
       await updateOrderItemFields(item.id, payload, token)
-      setAdminMessage('订单已更新')
+      showToast('success', '订单已更新')
       await fetchOrders()
     } catch (err) {
-      setAdminMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     }
   }
 
@@ -450,10 +452,10 @@ export default function OrdersPage() {
     if (!window.confirm(`确认删除商品「${item.productName ?? item.productId}」吗？`)) return
     try {
       await deleteOrderItem(item.id, token)
-      setAdminMessage('商品已删除')
+      showToast('success', '商品已删除')
       await fetchOrders()
     } catch (err) {
-      setAdminMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     }
   }
 
@@ -462,11 +464,11 @@ export default function OrdersPage() {
     const productId = Number(newItemForm.productId)
     const qty = Number(newItemForm.qty)
     if (!Number.isInteger(productId) || productId <= 0) {
-      setAdminMessage('请选择商品')
+      showToast('error', '请选择商品')
       return
     }
     if (!Number.isFinite(qty) || qty <= 0) {
-      setAdminMessage('请输入有效数量')
+      showToast('error', '请输入有效数量')
       return
     }
     try {
@@ -476,15 +478,15 @@ export default function OrdersPage() {
       }
       const result = await addOrderItem(orderId, payload, token)
       if (result.redirectedOrderId) {
-        setAdminMessage(`原订单已发货，新订单 #${result.redirectedOrderId} 已创建。`)
+        showToast('info', `原订单已发货，新订单 #${result.redirectedOrderId} 已创建。`)
       } else {
-        setAdminMessage('已添加商品')
+        showToast('success', '已添加商品')
       }
       setNewItemForm({ productId: '', qty: '', unitPrice: '' })
       await fetchOrders()
       window.dispatchEvent(new CustomEvent(INVENTORY_REFRESH_EVENT))
     } catch (err) {
-      setAdminMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     }
   }
 
@@ -493,10 +495,10 @@ export default function OrdersPage() {
     try {
       setPendingActions((prev) => ({ ...prev, [orderId]: true }))
       await acknowledgeOrderChange(orderId, token)
-      setMessage('已确认拣货变更')
+      showToast('success', '已确认拣货变更')
       await Promise.all([fetchPendingOrders(), fetchOrders()])
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     } finally {
       setPendingActions((prev) => ({ ...prev, [orderId]: false }))
     }
@@ -556,11 +558,11 @@ export default function OrdersPage() {
           updateOrderTrip(id, bulkTripInput.trim() || null, token)
         )
       )
-      setMessage(`已为 ${selectedOrderIds.size} 个订单设置车次`)
+      showToast('success', `已为 ${selectedOrderIds.size} 个订单设置车次`)
       setBulkTripInput('')
       fetchOrders()
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
     } finally {
       setBulkProcessing(false)
     }
@@ -573,13 +575,13 @@ export default function OrdersPage() {
       await Promise.all(
         Array.from(selectedOrderIds).map((id) => updateOrderStatus(id, targetStatus, token))
       )
-      setMessage(`已将 ${selectedOrderIds.size} 个订单状态改为「${STATUS_LABELS[targetStatus] || targetStatus}」`)
+      showToast('success', `已将 ${selectedOrderIds.size} 个订单状态改为「${STATUS_LABELS[targetStatus] || targetStatus}」`)
       setBulkConfirmStatus(null)
       setBulkStatusInput('')
       window.dispatchEvent(new CustomEvent(INVENTORY_REFRESH_EVENT))
       fetchOrders()
     } catch (err) {
-      setMessage((err as Error).message)
+      showToast('error', (err as Error).message)
       setBulkConfirmStatus(null)
     } finally {
       setBulkProcessing(false)
@@ -597,7 +599,6 @@ export default function OrdersPage() {
       </div>
       {loading && <p>加载中…</p>}
       {error && <p className="error-text">{error}</p>}
-      {message && <p className="hint">{message}</p>}
 
       {/* Filters */}
       {isAdmin && (
@@ -888,47 +889,87 @@ export default function OrdersPage() {
                     {order.lastModifiedAt && <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>}
                   </div>
                   <div className="order-controls">
-                    <div>
-                      <p>状态：<OrderStatusBadge status={order.status} /></p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <OrderStatusBadge status={order.status} />
                       {isAdmin && (
-                        <select value={order.status} onChange={(e) => handleStatusChange(order.id, e.target.value)}>
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                          style={{ fontSize: '0.82rem', padding: '0.2rem 0.4rem' }}
+                        >
                           {STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
+                            <option key={status} value={status}>{STATUS_LABELS[status] || status}</option>
                           ))}
                         </select>
                       )}
                     </div>
                     {isAdmin && (
-                      <>
-                        <div className="trip-input">
-                          <label>
-                            车次
-                            <input value={tripInputs[order.id] ?? ''} onChange={(e) => handleTripChange(order.id, e.target.value)} />
-                          </label>
-                          <button type="button" onClick={() => handleTripSave(order.id)}>
-                            保存
-                          </button>
-                        </div>
-                        <div className="order-head-actions">
-                          <button type="button" className="ghost" onClick={() => startEditOrder(order)}>
-                            {editingOrderId === order.id ? '完成编辑' : '编辑订单'}
-                          </button>
-                          <button type="button" className="ghost" onClick={() => toggleOrderLogs(order.id)}>
-                            {orderLogsVisible[order.id] ? '隐藏变更日志' : '查看变更日志'}
-                          </button>
-                          {!['shipped', 'completed', 'cancelled'].includes(order.status) && (
-                            <button
-                              type="button"
-                              className="danger"
-                              onClick={() => setDeleteConfirm({ orderId: order.id, customerName: getCustomerDisplay(order) })}
-                            >
-                              删除订单
-                            </button>
-                          )}
-                        </div>
-                      </>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          className="ghost"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '1rem', lineHeight: 1 }}
+                          onClick={() => setOpenMenuId(openMenuId === order.id ? null : order.id)}
+                        >
+                          ···
+                        </button>
+                        {openMenuId === order.id && (
+                          <>
+                            <div
+                              style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+                              onClick={() => setOpenMenuId(null)}
+                            />
+                            <div style={{
+                              position: 'absolute', right: 0, top: '110%', zIndex: 99,
+                              background: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 180,
+                              display: 'flex', flexDirection: 'column',
+                            }}>
+                              {/* Trip number inline edit */}
+                              <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.3rem' }}>车次</div>
+                                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                  <input
+                                    value={tripInputs[order.id] ?? ''}
+                                    onChange={(e) => handleTripChange(order.id, e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { handleTripSave(order.id); setOpenMenuId(null) } }}
+                                    style={{ flex: 1, padding: '0.25rem 0.4rem', fontSize: '0.82rem', minWidth: 0 }}
+                                    placeholder="车次号"
+                                  />
+                                  <button
+                                    type="button"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                                    onClick={() => { handleTripSave(order.id); setOpenMenuId(null) }}
+                                  >保存</button>
+                                </div>
+                              </div>
+                              <button
+                                type="button" className="ghost"
+                                style={{ border: 'none', borderRadius: 0, padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.88rem' }}
+                                onClick={() => { startEditOrder(order); setOpenMenuId(null) }}
+                              >
+                                {editingOrderId === order.id ? '✔ 完成编辑' : '编辑订单'}
+                              </button>
+                              <button
+                                type="button" className="ghost"
+                                style={{ border: 'none', borderRadius: 0, padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.88rem' }}
+                                onClick={() => { toggleOrderLogs(order.id); setOpenMenuId(null) }}
+                              >
+                                {orderLogsVisible[order.id] ? '隐藏变更日志' : '查看变更日志'}
+                              </button>
+                              {!['shipped', 'completed', 'cancelled'].includes(order.status) && (
+                                <button
+                                  type="button"
+                                  style={{ border: 'none', borderRadius: '0 0 0.5rem 0.5rem', padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.88rem', background: '#fef2f2', color: '#991b1b' }}
+                                  onClick={() => { setDeleteConfirm({ orderId: order.id, customerName: getCustomerDisplay(order) }); setOpenMenuId(null) }}
+                                >
+                                  删除订单
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1078,7 +1119,6 @@ export default function OrdersPage() {
           ))}
         </div>
       )}
-      {adminMessage && <p className="hint">{adminMessage}</p>}
     </div>
   )
 }
