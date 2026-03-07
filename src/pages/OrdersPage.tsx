@@ -88,6 +88,13 @@ export default function OrdersPage() {
   const [orderLogsVisible, setOrderLogsVisible] = useState<Record<number, boolean>>({})
   const [orderLogsError, setOrderLogsError] = useState<Record<number, string | null>>({})
 
+  // Bulk operations
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set())
+  const [bulkTripInput, setBulkTripInput] = useState('')
+  const [bulkStatusInput, setBulkStatusInput] = useState('')
+  const [bulkProcessing, setBulkProcessing] = useState(false)
+  const [bulkConfirmStatus, setBulkConfirmStatus] = useState<string | null>(null)
+
   // Customers
   const [customers, setCustomers] = useState<Customer[]>([])
 
@@ -513,6 +520,72 @@ export default function OrdersPage() {
     }
   }
 
+  const allFilteredSelected =
+    filteredOrders.length > 0 && filteredOrders.every((o) => selectedOrderIds.has(o.id))
+
+  const toggleSelectOrder = (id: number) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev)
+        filteredOrders.forEach((o) => next.delete(o.id))
+        return next
+      })
+    } else {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev)
+        filteredOrders.forEach((o) => next.add(o.id))
+        return next
+      })
+    }
+  }
+
+  const handleBulkTripSave = async () => {
+    if (selectedOrderIds.size === 0 || !token) return
+    try {
+      setBulkProcessing(true)
+      await Promise.all(
+        Array.from(selectedOrderIds).map((id) =>
+          updateOrderTrip(id, bulkTripInput.trim() || null, token)
+        )
+      )
+      setMessage(`已为 ${selectedOrderIds.size} 个订单设置车次`)
+      setBulkTripInput('')
+      fetchOrders()
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
+
+  const handleBulkStatusChange = async (targetStatus: string) => {
+    if (selectedOrderIds.size === 0 || !token) return
+    try {
+      setBulkProcessing(true)
+      await Promise.all(
+        Array.from(selectedOrderIds).map((id) => updateOrderStatus(id, targetStatus, token))
+      )
+      setMessage(`已将 ${selectedOrderIds.size} 个订单状态改为「${STATUS_LABELS[targetStatus] || targetStatus}」`)
+      setBulkConfirmStatus(null)
+      setBulkStatusInput('')
+      window.dispatchEvent(new CustomEvent(INVENTORY_REFRESH_EVENT))
+      fetchOrders()
+    } catch (err) {
+      setMessage((err as Error).message)
+      setBulkConfirmStatus(null)
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
+
   return (
     <div className="page-content">
       <div className="orders-header">
@@ -618,6 +691,42 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Bulk status confirmation dialog */}
+      {bulkConfirmStatus && (
+        <div className="modal-overlay" onClick={() => setBulkConfirmStatus(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>确认批量变更状态</h3>
+            <p>
+              确定将选中的 <strong>{selectedOrderIds.size}</strong> 个订单状态改为
+              <span className={`badge badge-${bulkConfirmStatus}`} style={{ margin: '0 0.4rem' }}>
+                {STATUS_LABELS[bulkConfirmStatus] || bulkConfirmStatus}
+              </span>
+              ？
+            </p>
+            {bulkConfirmStatus === 'shipped' && (
+              <p className="modal-warning">发货后将扣减库存，且订单将无法编辑。</p>
+            )}
+            {bulkConfirmStatus === 'completed' && (
+              <p className="modal-warning">完成后订单将关闭，且库存将被扣减（如未扣减）。</p>
+            )}
+            {bulkConfirmStatus === 'cancelled' && (
+              <p className="modal-warning">取消后订单将无法恢复。</p>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={() => setBulkConfirmStatus(null)}>取消</button>
+              <button
+                type="button"
+                className={bulkConfirmStatus === 'cancelled' ? 'danger' : ''}
+                disabled={bulkProcessing}
+                onClick={() => handleBulkStatusChange(bulkConfirmStatus)}
+              >
+                {bulkProcessing ? '处理中…' : '确认变更'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete order confirmation dialog */}
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
@@ -697,6 +806,64 @@ export default function OrdersPage() {
         </section>
       )}
 
+      {/* Bulk action bar */}
+      {isAdmin && filteredOrders.length > 0 && (
+        <div className="bulk-action-bar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', marginBottom: '0.75rem', background: selectedOrderIds.size > 0 ? '#eff6ff' : '#f9fafb', border: `1px solid ${selectedOrderIds.size > 0 ? '#bfdbfe' : '#e5e7eb'}`, borderRadius: '0.5rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}>
+            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} style={{ width: 15, height: 15 }} />
+            {allFilteredSelected ? '取消全选' : `全选 ${filteredOrders.length} 单`}
+          </label>
+          {selectedOrderIds.size > 0 && (
+            <>
+              <span style={{ fontSize: '0.875rem', color: '#1d4ed8', fontWeight: 600 }}>已选 {selectedOrderIds.size} 单</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <input
+                  type="text"
+                  placeholder="车次号（留空清除）"
+                  value={bulkTripInput}
+                  onChange={(e) => setBulkTripInput(e.target.value)}
+                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', width: 140 }}
+                />
+                <button type="button" disabled={bulkProcessing} onClick={handleBulkTripSave} style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>
+                  {bulkProcessing ? '处理中…' : '批量设置车次'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <select
+                  value={bulkStatusInput}
+                  onChange={(e) => setBulkStatusInput(e.target.value)}
+                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                >
+                  <option value="">选择目标状态</option>
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!bulkStatusInput || bulkProcessing}
+                  className={bulkStatusInput === 'cancelled' ? 'danger' : ''}
+                  style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}
+                  onClick={() => {
+                    if (!bulkStatusInput) return
+                    if (RISKY_STATUSES.has(bulkStatusInput)) {
+                      setBulkConfirmStatus(bulkStatusInput)
+                    } else {
+                      handleBulkStatusChange(bulkStatusInput)
+                    }
+                  }}
+                >
+                  批量改状态
+                </button>
+              </div>
+              <button type="button" className="ghost" style={{ fontSize: '0.8rem', marginLeft: 'auto' }} onClick={() => setSelectedOrderIds(new Set())}>
+                取消选择
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {filteredOrders.length === 0 ? (
         <p>{hasActiveFilters ? '没有符合筛选条件的订单。' : '暂无订单。'}</p>
       ) : (
@@ -705,6 +872,14 @@ export default function OrdersPage() {
             <div key={order.id}>
               <div className="order-card">
                 <div className="order-head">
+                  {isAdmin && (
+                    <input
+                      type="checkbox"
+                      checked={selectedOrderIds.has(order.id)}
+                      onChange={() => toggleSelectOrder(order.id)}
+                      style={{ width: 16, height: 16, marginRight: '0.5rem', marginTop: '0.2rem', flexShrink: 0, cursor: 'pointer' }}
+                    />
+                  )}
                   <div>
                     <strong>订单 #{order.id}</strong>
                     {order.pendingReview ? <span className="badge warning">待确认变更</span> : null}
@@ -789,8 +964,8 @@ export default function OrdersPage() {
                               type="number"
                               value={qtyValue}
                               onChange={(e) => handleItemFieldChange(item.id!, 'qty', e.target.value)}
-                              min={item.productUnit === 'kg' ? 0.1 : 1}
-                              step={item.productUnit === 'kg' ? 0.1 : 1}
+                              min={item.productUnit === 'kg' || item.productUnit === 'lb' ? 0.001 : 1}
+                              step={item.productUnit === 'kg' || item.productUnit === 'lb' ? 0.001 : 1}
                             />
                           ) : (
                             item.qtyOrdered

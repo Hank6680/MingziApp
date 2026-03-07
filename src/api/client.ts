@@ -404,6 +404,7 @@ export interface FrequentProduct {
   isAvailable: number
   totalQty: number
   orderCount: number
+  lastPrice?: number | null
 }
 
 export function getCustomerFrequentProducts(customerId: number, token: string) {

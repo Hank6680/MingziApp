@@ -115,6 +115,16 @@ export default function StaffOrderingPage() {
       setFrequentLoading(true)
       const data = await getCustomerFrequentProducts(selectedCustomerId, token)
       setFrequentProducts(data.items)
+      // Pre-fill price overrides with this customer's last used price
+      setPriceOverrides((prev) => {
+        const next = { ...prev }
+        for (const fp of data.items) {
+          if (fp.lastPrice != null) {
+            next[fp.productId] = String(fp.lastPrice)
+          }
+        }
+        return next
+      })
     } catch {
       setFrequentProducts([])
     } finally {
@@ -319,7 +329,7 @@ export default function StaffOrderingPage() {
         <input
           type="number"
           min="0"
-          step={p.unit === 'kg' ? '0.1' : '1'}
+          step={p.unit === 'kg' || p.unit === 'lb' ? '0.001' : '1'}
           value={qtyInputs[p.id] || ''}
           onChange={(e) => setQtyInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
           onKeyDown={(e) => {
@@ -498,7 +508,7 @@ export default function StaffOrderingPage() {
                     <input
                       type="number"
                       min="0"
-                      step={p.unit === 'kg' ? '0.1' : '1'}
+                      step={p.unit === 'kg' || p.unit === 'lb' ? '0.001' : '1'}
                       value={qtyInputs[p.id] || ''}
                       onChange={(e) => setQtyInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
                       onKeyDown={(e) => {
@@ -586,7 +596,7 @@ export default function StaffOrderingPage() {
                     </tr>
                     {frequentProducts.filter(fp => fp.isAvailable).map((fp) =>
                       renderProductRow(
-                        { id: fp.productId, name: fp.name, unit: fp.unit, warehouseType: fp.warehouseType, price: fp.price },
+                        { id: fp.productId, name: fp.name, unit: fp.unit, warehouseType: fp.warehouseType, price: fp.lastPrice ?? fp.price },
                         true
                       )
                     )}

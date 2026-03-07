@@ -77,7 +77,11 @@ router.get("/:id/frequent-products", requireStaffOrAdmin, async (req, res, next)
   try {
     const rows = await dbAll(
       `SELECT oi.productId, p.name, p.unit, p.warehouseType, p.price, p.isAvailable,
-              SUM(oi.qtyOrdered) as totalQty, COUNT(*) as orderCount
+              SUM(oi.qtyOrdered) as totalQty, COUNT(*) as orderCount,
+              (SELECT oi2.unitPrice FROM order_items oi2
+               JOIN orders o2 ON o2.id = oi2.orderId
+               WHERE o2.customerId = ? AND oi2.productId = oi.productId AND oi2.unitPrice IS NOT NULL
+               ORDER BY o2.id DESC LIMIT 1) as lastPrice
        FROM order_items oi
        JOIN orders o ON o.id = oi.orderId
        JOIN products p ON p.id = oi.productId
@@ -85,7 +89,7 @@ router.get("/:id/frequent-products", requireStaffOrAdmin, async (req, res, next)
        GROUP BY oi.productId
        ORDER BY orderCount DESC, totalQty DESC
        LIMIT 50`,
-      [id]
+      [id, id]
     )
     return res.json({ items: rows })
   } catch (err) {

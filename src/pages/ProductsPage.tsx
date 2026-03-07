@@ -61,7 +61,7 @@ export default function ProductsPage() {
 
   const totalPages = Math.ceil(totalProducts / PAGE_SIZE)
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const unitOptions = ['kg', '箱', '袋', '件', '桶']
+  const unitOptions = ['kg', 'lb', '箱', '袋', '件', '桶']
   const warehouseOptions = ['干', '鲜', '冻']
 
   const productMap = useMemo(() => {
