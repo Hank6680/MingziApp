@@ -286,7 +286,7 @@ export default function OrdersPage() {
   const generateDeliveryNote = (tripNumber: string) => {
     const tripOrders = filteredOrders.filter((o) => o.tripNumber === tripNumber)
     if (tripOrders.length === 0) {
-      setMessage('该车次无订单')
+      showToast('info', '该车次无订单')
       return
     }
     const now = new Date().toLocaleString('zh-CN')
@@ -351,9 +351,9 @@ export default function OrdersPage() {
     if (printWindow) {
       printWindow.document.write(html)
       printWindow.document.close()
-      setMessage(`配送单已打开：${tripNumber}（在弹出窗口中打印或存为PDF）`)
+      showToast('success', `配送单已打开：${tripNumber}（在弹出窗口中打印或存为PDF）`)
     } else {
-      setMessage('弹出窗口被拦截，请允许弹出窗口后重试')
+      showToast('error', '弹出窗口被拦截，请允许弹出窗口后重试')
     }
   }
 
@@ -397,7 +397,6 @@ export default function OrdersPage() {
       setEditingOrderId(null)
       setEditQuantities({})
       setEditPrices({})
-      setAdminMessage(null)
       return
     }
     const qtyMap: Record<number, string> = {}
@@ -412,7 +411,6 @@ export default function OrdersPage() {
     setEditPrices(priceMap)
     setNewItemForm({ productId: '', qty: '', unitPrice: '' })
     setEditingOrderId(order.id)
-    setAdminMessage(null)
   }
 
   const handleItemFieldChange = (itemId: number, field: 'qty' | 'price', value: string) => {
