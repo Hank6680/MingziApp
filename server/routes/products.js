@@ -94,7 +94,7 @@ router.patch("/:id", requireAuth, requireAdminOrManager, (req, res, next) => {
     return next(httpError(400, "Invalid product id", "VALIDATION_ERROR"))
   }
 
-  const { name, unit, warehouseType, price } = req.body || {}
+  const { name, unit, warehouseType, price, defaultSupplierId } = req.body || {}
   const fields = []
   const values = []
 
@@ -128,6 +128,14 @@ router.patch("/:id", requireAuth, requireAdminOrManager, (req, res, next) => {
     }
     fields.push("price = ?")
     values.push(price)
+  }
+
+  if (defaultSupplierId !== undefined) {
+    if (defaultSupplierId !== null && (!Number.isInteger(Number(defaultSupplierId)) || Number(defaultSupplierId) <= 0)) {
+      return next(httpError(400, "defaultSupplierId must be a positive integer or null", "VALIDATION_ERROR"))
+    }
+    fields.push("defaultSupplierId = ?")
+    values.push(defaultSupplierId === null ? null : Number(defaultSupplierId))
   }
 
   if (!fields.length) {

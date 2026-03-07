@@ -8,11 +8,12 @@ import {
   getCustomers,
   getProductNames,
   getProducts,
+  getSuppliers,
   updateProduct,
   updateProductAvailability,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import type { Customer, Product } from '../types'
+import type { Customer, Product, Supplier } from '../types'
 import { formatMoney } from '../utils/money'
 import Pagination from '../components/Pagination'
 import SearchableFilter from '../components/SearchableFilter'
@@ -44,7 +45,8 @@ export default function ProductsPage() {
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', unit: '', warehouseType: '', price: '' })
+  const [editForm, setEditForm] = useState({ name: '', unit: '', warehouseType: '', price: '', defaultSupplierId: '' })
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [orderSummary, setOrderSummary] = useState<{ items: OrderSummaryItem[]; total: number } | null>(null)
   const [page, setPage] = useState(0)
   const [totalProducts, setTotalProducts] = useState(0)
@@ -52,6 +54,10 @@ export default function ProductsPage() {
 
   // Admin customer selector
   const [customers, setCustomers] = useState<Customer[]>([])
+
+  useEffect(() => {
+    if (token) getSuppliers(token).then((d) => setSuppliers(d.items)).catch(() => {})
+  }, [token])
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
 
   // Bulk price modal
@@ -226,6 +232,7 @@ export default function ProductsPage() {
       unit: product.unit || '件',
       warehouseType: product.warehouseType || '干',
       price: product.price ? String(product.price) : '',
+      defaultSupplierId: product.defaultSupplierId ? String(product.defaultSupplierId) : '',
     })
   }
 
@@ -241,6 +248,12 @@ export default function ProductsPage() {
     if (editForm.warehouseType.trim()) payload.warehouseType = editForm.warehouseType.trim()
     const priceVal = Number(editForm.price)
     if (!Number.isNaN(priceVal)) payload.price = priceVal
+    if (editForm.defaultSupplierId !== '') {
+      const dsId = Number(editForm.defaultSupplierId)
+      payload.defaultSupplierId = Number.isNaN(dsId) ? null : dsId || null
+    } else {
+      payload.defaultSupplierId = null
+    }
 
     try {
       setResult(null)
@@ -432,6 +445,7 @@ export default function ProductsPage() {
               <th>单位</th>
               <th>仓储</th>
               <th>价格</th>
+              {isAdmin && <th>默认供应商</th>}
               <th>可用</th>
               <th>下单数量</th>
               {isAdmin && <th>管理</th>}
@@ -502,6 +516,23 @@ export default function ProductsPage() {
                       <>{formatMoney(product.price)}</>
                     )}
                   </td>
+                  {isAdmin && (
+                    <td>
+                      {isEditing ? (
+                        <select
+                          value={editForm.defaultSupplierId}
+                          onChange={(e) => handleEditInputChange('defaultSupplierId', e.target.value)}
+                        >
+                          <option value="">无</option>
+                          {suppliers.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        suppliers.find((s) => s.id === product.defaultSupplierId)?.name ?? <span className="muted">-</span>
+                      )}
+                    </td>
+                  )}
                   <td><AvailabilityBadge available={!!product.isAvailable} /></td>
                   <td>
                     <input

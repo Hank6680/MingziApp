@@ -36,9 +36,9 @@ router.use(requireAuth, requireAdminOrManager)
 router.post("/", async (req, res, next) => {
   const { supplierId, receivedDate, notes, items } = req.body || {}
 
-  // Validate supplierId
-  const normalizedSupplierId = Number(supplierId)
-  if (!Number.isInteger(normalizedSupplierId) || normalizedSupplierId <= 0) {
+  // supplierId is optional (发票晚到场景)
+  const normalizedSupplierId = supplierId != null ? Number(supplierId) : null
+  if (normalizedSupplierId !== null && (!Number.isInteger(normalizedSupplierId) || normalizedSupplierId <= 0)) {
     return next(httpError(400, "supplierId must be a positive integer", "VALIDATION_ERROR"))
   }
 
@@ -77,11 +77,14 @@ router.post("/", async (req, res, next) => {
     await dbRun("BEGIN IMMEDIATE")
 
     try {
-      // 1. Validate supplier exists
-      const supplier = await dbGet("SELECT id, name FROM suppliers WHERE id = ?", [normalizedSupplierId])
-      if (!supplier) {
-        await dbRun("ROLLBACK")
-        return next(httpError(404, "Supplier not found", "NOT_FOUND"))
+      // 1. Validate supplier exists (if provided)
+      let supplier = null
+      if (normalizedSupplierId !== null) {
+        supplier = await dbGet("SELECT id, name FROM suppliers WHERE id = ?", [normalizedSupplierId])
+        if (!supplier) {
+          await dbRun("ROLLBACK")
+          return next(httpError(404, "Supplier not found", "NOT_FOUND"))
+        }
       }
 
       // 2. Generate batchNo: RB-YYYYMMDD-XXXX
@@ -96,7 +99,7 @@ router.post("/", async (req, res, next) => {
       const seq = (countRow?.cnt ?? 0) + 1
       const batchNo = `RB-${dateStr}-${String(seq).padStart(4, "0")}`
 
-      // 3. Insert receiving_batches
+      // 3. Insert receiving_batches (supplierId may be null)
       const batchResult = await dbRun(
         `INSERT INTO receiving_batches (batchNo, supplierId, receivedDate, notes, reconcileStatus)
          VALUES (?, ?, ?, ?, 'pending')`,
@@ -154,7 +157,7 @@ router.post("/", async (req, res, next) => {
           id: batchId,
           batchNo,
           supplierId: normalizedSupplierId,
-          supplierName: supplier.name,
+          supplierName: supplier?.name ?? null,
           receivedDate: parsedDate.toISOString(),
           notes: notesText,
           reconcileStatus: "pending",
@@ -165,6 +168,34 @@ router.post("/", async (req, res, next) => {
       await dbRun("ROLLBACK").catch(() => {})
       throw txErr
     }
+  } catch (err) {
+    return next(err)
+  }
+})
+
+// ─── PATCH /:id/supplier — Fill in supplier after the fact ──────────────────
+
+router.patch("/:id/supplier", async (req, res, next) => {
+  const batchId = Number(req.params.id)
+  if (!Number.isInteger(batchId) || batchId <= 0)
+    return next(httpError(400, "Invalid batch id", "VALIDATION_ERROR"))
+
+  const { supplierId } = req.body || {}
+  const normalizedSupplierId = Number(supplierId)
+  if (!Number.isInteger(normalizedSupplierId) || normalizedSupplierId <= 0)
+    return next(httpError(400, "supplierId must be a positive integer", "VALIDATION_ERROR"))
+
+  try {
+    const supplier = await dbGet("SELECT id, name FROM suppliers WHERE id = ?", [normalizedSupplierId])
+    if (!supplier) return next(httpError(404, "Supplier not found", "NOT_FOUND"))
+
+    const result = await dbRun(
+      "UPDATE receiving_batches SET supplierId = ? WHERE id = ?",
+      [normalizedSupplierId, batchId]
+    )
+    if (result.changes === 0) return next(httpError(404, "Batch not found", "NOT_FOUND"))
+
+    return res.json({ ok: true, supplierId: normalizedSupplierId, supplierName: supplier.name })
   } catch (err) {
     return next(err)
   }

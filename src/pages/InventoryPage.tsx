@@ -9,7 +9,9 @@ import {
   getProductNames,
   getReceivingBatches,
   getSuppliers,
+  pushBatchBillToQbo,
   submitStockCount,
+  updateBatchSupplier,
   updateInventoryStock,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -81,6 +83,10 @@ export default function InventoryPage() {
   const [batchItems, setBatchItems] = useState<BatchItemRow[]>([createEmptyBatchItem()])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [recentBatches, setRecentBatches] = useState<ReceivingBatch[]>([])
+  const [batchBillPushingId, setBatchBillPushingId] = useState<number | null>(null)
+  const [fillSupplierBatchId, setFillSupplierBatchId] = useState<number | null>(null)
+  const [fillSupplierId, setFillSupplierId] = useState('')
+  const [fillSupplierSaving, setFillSupplierSaving] = useState(false)
   const [suppliersModalOpen, setSuppliersModalOpen] = useState(false)
   const [returnForm, setReturnForm] = useState(createReturnForm)
   const [damageForm, setDamageForm] = useState(createDamageForm)
@@ -282,15 +288,29 @@ export default function InventoryPage() {
   }
 
   const updateBatchItem = (idx: number, field: keyof BatchItemRow, value: string) => {
-    setBatchItems((prev) => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)))
+    setBatchItems((prev) => {
+      const updated = prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item))
+      // Auto-infer supplier when productId changes
+      if (field === 'productId') {
+        const inferredIds = updated
+          .filter((item) => item.productId)
+          .map((item) => {
+            const p = allProducts.find((prod) => String(prod.id) === item.productId)
+            return p?.defaultSupplierId ?? null
+          })
+          .filter((id): id is number => id != null)
+        const unique = Array.from(new Set(inferredIds))
+        if (unique.length === 1) setBatchSupplierId(String(unique[0]))
+      }
+      return updated
+    })
   }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!token) return
 
-    const supplierId = Number(batchSupplierId)
-    if (!supplierId) { setMessage('请选择供应商'); return }
+    const supplierId = Number(batchSupplierId) || undefined
     if (!batchDate) { setMessage('请选择收货日期'); return }
 
     const validItems = batchItems
@@ -311,12 +331,50 @@ export default function InventoryPage() {
       }, token)
       setBatchItems([createEmptyBatchItem()])
       setBatchNotes('')
+      setBatchSupplierId('')
       await Promise.all([fetchInventory(), fetchAllProducts(), fetchLogs(), fetchRecentBatches()])
       setMessage('批次入库成功')
     } catch (err) {
       setMessage((err as Error).message)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleFillSupplier = async (batchId: number) => {
+    if (!token || !fillSupplierId) return
+    try {
+      setFillSupplierSaving(true)
+      const res = await updateBatchSupplier(batchId, Number(fillSupplierId), token)
+      setRecentBatches((prev) =>
+        prev.map((b) => b.id === batchId ? { ...b, supplierId: res.supplierId, supplierName: res.supplierName } : b)
+      )
+      setFillSupplierBatchId(null)
+      setFillSupplierId('')
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setFillSupplierSaving(false)
+    }
+  }
+
+  const handlePushBatchBill = async (batchId: number) => {
+    if (!token) return
+    try {
+      setBatchBillPushingId(batchId)
+      const res = await pushBatchBillToQbo(batchId, token)
+      if (res.skipped) {
+        setMessage(`批次已推送过 QBO (Bill ID: ${res.qboBillId})`)
+      } else {
+        setMessage(`QBO Bill 创建成功${res.qboBillDocNumber ? ' #' + res.qboBillDocNumber : ' (ID: ' + res.qboBillId + ')'}`)
+        setRecentBatches((prev) =>
+          prev.map((b) => (b.id === batchId ? { ...b, qbo_bill_id: res.qboBillId } : b))
+        )
+      }
+    } catch (err) {
+      setMessage((err as Error).message)
+    } finally {
+      setBatchBillPushingId(null)
     }
   }
 
@@ -514,8 +572,8 @@ export default function InventoryPage() {
         <form className="inventory-form" onSubmit={handleSubmit}>
           <label>
             供应商
-            <select value={batchSupplierId} onChange={(e) => setBatchSupplierId(e.target.value)} required>
-              <option value="">请选择供应商</option>
+            <select value={batchSupplierId} onChange={(e) => setBatchSupplierId(e.target.value)}>
+              <option value="">不知道（可不填）</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -580,17 +638,67 @@ export default function InventoryPage() {
                   <th>商品数</th>
                   <th>总数量</th>
                   <th>对账状态</th>
+                  <th>QBO</th>
                 </tr>
               </thead>
               <tbody>
                 {recentBatches.map((b) => (
                   <tr key={b.id}>
                     <td>{b.batchNo}</td>
-                    <td>{b.supplierName ?? '-'}</td>
+                    <td>
+                      {fillSupplierBatchId === b.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <select
+                            value={fillSupplierId}
+                            onChange={(e) => setFillSupplierId(e.target.value)}
+                            style={{ fontSize: '0.8em' }}
+                          >
+                            <option value="">选供应商</option>
+                            {suppliers.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            style={{ fontSize: '0.8em' }}
+                            disabled={!fillSupplierId || fillSupplierSaving}
+                            onClick={() => handleFillSupplier(b.id)}
+                          >
+                            {fillSupplierSaving ? '保存中…' : '保存'}
+                          </button>
+                          <button type="button" className="ghost" style={{ fontSize: '0.8em' }} onClick={() => setFillSupplierBatchId(null)}>取消</button>
+                        </div>
+                      ) : (
+                        <span
+                          style={!b.supplierName ? { color: 'var(--color-warning, #b45309)', cursor: 'pointer', fontSize: '0.85em' } : {}}
+                          onClick={() => !b.supplierName && setFillSupplierBatchId(b.id)}
+                          title={!b.supplierName ? '点击补填供应商' : undefined}
+                        >
+                          {b.supplierName ?? '未填写 ⭐'}
+                        </span>
+                      )}
+                    </td>
                     <td>{b.receivedDate?.slice(0, 10)}</td>
                     <td>{b.itemCount ?? 0}</td>
                     <td>{b.totalQty ?? 0}</td>
                     <td><ReconcileStatusBadge status={b.reconcileStatus} /></td>
+                    <td>
+                      {b.qbo_bill_id ? (
+                        <span className="badge badge-success" title={`QBO Bill ID: ${b.qbo_bill_id}`}>QBO ✓</span>
+                      ) : !b.supplierId ? (
+                        <span className="muted" style={{ fontSize: '0.8em' }}>先补填供应商</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost"
+                          style={{ fontSize: '0.8em' }}
+                          disabled={batchBillPushingId === b.id}
+                          onClick={() => handlePushBatchBill(b.id)}
+                        >
+                          {batchBillPushingId === b.id ? '推送中…' : '推送到 QBO'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

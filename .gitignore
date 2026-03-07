@@ -18,6 +18,10 @@ server/data.db
 # Backup files (contain business data)
 server/backups/
 
+# Environment variables (contain secrets)
+server/.env
+.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

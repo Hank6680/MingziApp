@@ -414,6 +414,62 @@ export function getCustomerFrequentProducts(customerId: number, token: string) {
   })
 }
 
+// --- QuickBooks Online ---
+
+export function updateOrderPayment(orderId: number, payment_status: 'paid' | 'unpaid', token: string) {
+  return request<{ ok: boolean; orderId: number; payment_status: string }>(`/api/orders/${orderId}/payment`, {
+    method: 'PATCH',
+    body: JSON.stringify({ payment_status }),
+    token,
+  })
+}
+
+export function syncQboPayments(token: string) {
+  return request<{ ok: boolean; updated: number; total: number; message?: string }>('/api/qbo/sync-payments', {
+    method: 'POST',
+    token,
+  })
+}
+
+export function recordQboPayment(orderId: number, token: string) {
+  return request<{ ok: boolean; skipped?: boolean; message?: string; qboPaymentId?: string }>(`/api/qbo/record-payment/${orderId}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export function pushSupplierInvoiceToQbo(invoiceId: number, token: string) {
+  return request<{ ok: boolean; skipped?: boolean; message?: string; qboBillId?: string; qboBillDocNumber?: string; qboTotal?: number }>(`/api/qbo/push-bill/${invoiceId}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export function pushBatchBillToQbo(batchId: number, token: string) {
+  return request<{ ok: boolean; skipped?: boolean; message?: string; qboBillId?: string; qboBillDocNumber?: string }>(`/api/qbo/push-batch-bill/${batchId}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export function pushOrderToQbo(orderId: number, token: string) {
+  return request<{ ok: boolean; qboInvoiceId: string; qboInvoiceDocNumber: string; qboTotal: number }>(`/api/qbo/push/${orderId}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export async function downloadInvoicePdf(qboInvoiceId: string, token: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/qbo/invoice/${qboInvoiceId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data?.error?.message || '下载 PDF 失败')
+  }
+  return res.blob()
+}
+
 // --- Suppliers ---
 
 export function getSuppliers(token: string) {
@@ -443,7 +499,7 @@ export function deleteSupplier(id: number, token: string) {
 // --- Receiving Batches ---
 
 export interface CreateBatchPayload {
-  supplierId: number
+  supplierId?: number
   receivedDate: string
   notes?: string
   items: { productId: number; quantity: number }[]
@@ -453,6 +509,14 @@ export function createReceivingBatch(payload: CreateBatchPayload, token: string)
   return request<{ batch: ReceivingBatch }>('/api/receiving-batches', {
     method: 'POST',
     body: JSON.stringify(payload),
+    token,
+  })
+}
+
+export function updateBatchSupplier(batchId: number, supplierId: number, token: string) {
+  return request<{ ok: boolean; supplierId: number; supplierName: string }>(`/api/receiving-batches/${batchId}/supplier`, {
+    method: 'PATCH',
+    body: JSON.stringify({ supplierId }),
     token,
   })
 }

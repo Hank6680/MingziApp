@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI 自动化方案 — MingziApp</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 20mm 22mm;
+    line-height: 1.7;
+  }
+  h1 { font-size: 22px; color: #2d7a4f; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 28px; }
+  h2 {
+    font-size: 15px;
+    color: #2d7a4f;
+    border-left: 4px solid #2d7a4f;
+    padding-left: 10px;
+    margin: 28px 0 14px;
+  }
+  h3 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; color: #111; }
+  p { margin-bottom: 8px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 99px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .tag-high { background: #dcfce7; color: #166534; }
+  .tag-mid  { background: #fef9c3; color: #854d0e; }
+  .tag-low  { background: #f1f5f9; color: #475569; }
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+  .card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .card-body  { color: #444; font-size: 12px; }
+  .flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 14px 0;
+    font-size: 12px;
+  }
+  .flow-step {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #166534;
+    font-weight: 600;
+  }
+  .flow-arrow { color: #9ca3af; font-size: 14px; }
+  .flow-ai {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #1e40af;
+    font-weight: 600;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 10px 0 18px;
+  }
+  th {
+    background: #2d7a4f;
+    color: #fff;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .highlight-box {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 18px 0;
+  }
+  .highlight-box strong { color: #166534; }
+  .footer {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #9ca3af;
+    text-align: right;
+  }
+  @media print {
+    body { padding: 15mm 18mm; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>AI 自动化方案</h1>
+<div class="subtitle">MingziApp 业务自动化升级提案 &nbsp;|&nbsp; 2026年3月</div>
+
+<!-- ─── 背景 ─── -->
+<h2>一、背景与目标</h2>
+<p>
+  公司目前已搭建 MingziApp 订单管理系统，覆盖下单、拣货、发货等核心流程。
+  与此同时，财务环节（开票、对账、发送 Statement）仍依赖 QuickBooks 手动录入，
+  存在<strong>重复劳动多、人工转录易出错、财务与运营数据不同步</strong>等问题。
+</p>
+<p>
+  本方案目标：在现有系统基础上引入 AI 代理，打通从<strong>客户下单 → 出货 → 开票 → 财务对账</strong>
+  的完整自动化链路，同时接入 QuickBooks 官方 API，保留现有财务工具，降低迁移风险。
+</p>
+
+<!-- ─── 整体链路 ─── -->
+<h2>二、自动化整体链路</h2>
+
+<div class="flow">
+  <div class="flow-step">客户下单</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">系统确认订单</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">拣货 / 发货</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-ai">AI 代理触发</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">自动生成 Invoice</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">推送 QuickBooks</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">发送客户邮件</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">会计自动对账</div>
+</div>
+
+<p>
+  前半段（下单 → 拣货 → 发货）已在 MingziApp 中完成。
+  本次新增的是<strong>后半段 AI 代理层</strong>，串联两个系统，无需人工手动操作。
+</p>
+
+<!-- ─── 功能实例 ─── -->
+<h2>三、具体功能实例</h2>
+
+<div class="card">
+  <div class="card-title">① 订单发货后自动创建 Invoice <span class="tag tag-high">优先级：高</span></div>
+  <div class="card-body">
+    <p>当订单状态变为「已发货」，AI 代理自动读取订单数据（客户信息、商品明细、单价、数量），
+    调用 QuickBooks API 创建对应 Invoice，Invoice 编号与系统订单号关联，无需手动录入。</p>
+    <p><strong>省掉的工作：</strong>每张订单约 3–5 分钟手动录入，每日 20 张订单即节省 1–1.5 小时。</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">② 定期自动发送客户 Statement <span class="tag tag-high">优先级：高</span></div>
+  <div class="card-body">
+    <p>每月末（或指定日期），AI 代理汇总每位客户的未付款 Invoice，
+    自动生成 Statement PDF，通过邮件发送给对应客户，并在 QuickBooks 中标记已发送。</p>
+    <p><strong>省掉的工作：</strong>手动查每个客户账期再逐一发邮件，目前可能需要半天。</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">③ 订单汇总报告自动生成 <span class="tag tag-high">优先级：高</span></div>
+  <div class="card-body">
+    <p>每天早上定时自动生成前一日订单汇总：按车次、按客户、按商品分类统计，
+    发送到管理员邮箱或微信群，不需要人工跑报表。</p>
+    <p><strong>数据来源：</strong>直接读 MingziApp 数据库，无需额外配置。</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">④ 自然语言下单 / 改单 <span class="tag tag-mid">优先级：中</span></div>
+  <div class="card-body">
+    <p>客户或员工通过微信发送非结构化消息（如："帮我加三箱苹果，下周三送"），
+    AI 代理解析意图，识别客户身份、商品、数量、日期，生成订单草稿，
+    人工一键确认后提交。</p>
+    <p><strong>适用场景：</strong>老客户复购、临时改单，减少电话沟通和手动录入。</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">⑤ 付款到账自动核销 <span class="tag tag-mid">优先级：中</span></div>
+  <div class="card-body">
+    <p>客户通过银行转账付款后，AI 代理对比银行流水与 QuickBooks 未付款 Invoice，
+    自动匹配金额与客户名，完成核销标记，异常情况发出提醒。</p>
+    <p><strong>省掉的工作：</strong>会计手动对账，尤其月末高峰期。</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">⑥ 库存低量预警 + 自动询价 <span class="tag tag-low">优先级：低</span></div>
+  <div class="card-body">
+    <p>当某商品库存低于预设阈值，AI 代理自动向对应供应商发送询价邮件，
+    汇总历史进价作为参考，等待确认后转人工审批下单。</p>
+  </div>
+</div>
+
+<!-- ─── 技术方案 ─── -->
+<h2>四、技术实现方式</h2>
+
+<table>
+  <thead>
+    <tr><th>模块</th><th>技术方案</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>QuickBooks 接入</td>
+      <td>QuickBooks Online API（官方）</td>
+      <td>OAuth 2.0 授权一次，Token 自动刷新；沙盒环境可测试</td>
+    </tr>
+    <tr>
+      <td>AI 代理</td>
+      <td>Claude / GPT-4o API</td>
+      <td>理解业务意图，调用工具函数执行操作</td>
+    </tr>
+    <tr>
+      <td>定时任务</td>
+      <td>Node.js cron 脚本</td>
+      <td>部署在 Render 或独立服务器，成本极低</td>
+    </tr>
+    <tr>
+      <td>邮件发送</td>
+      <td>SendGrid / AWS SES</td>
+      <td>每月前 10 万封免费（SendGrid）</td>
+    </tr>
+    <tr>
+      <td>PDF 生成</td>
+      <td>Puppeteer / html-pdf</td>
+      <td>服务端渲染，样式与现有系统一致</td>
+    </tr>
+    <tr>
+      <td>微信消息接入</td>
+      <td>企业微信应用 API</td>
+      <td>接收消息 → AI 解析 → 回复确认，需企业微信账号</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ─── 实施计划 ─── -->
+<h2>五、建议实施顺序</h2>
+
+<ol>
+  <li><strong>第一阶段（1–2周）</strong>：接入 QuickBooks API，实现「发货自动创建 Invoice」</li>
+  <li><strong>第二阶段（1周）</strong>：定时发送客户 Statement 邮件</li>
+  <li><strong>第三阶段（1周）</strong>：每日订单汇总报告自动推送</li>
+  <li><strong>第四阶段（2–3周）</strong>：自然语言改单（需接入微信 / 企业微信）</li>
+  <li><strong>第五阶段（按需）</strong>：付款核销自动化、库存预警下单</li>
+</ol>
+
+<!-- ─── 核心价值 ─── -->
+<h2>六、核心价值</h2>
+
+<div class="highlight-box">
+  <p><strong>数据一致性</strong>：运营数据与财务数据自动同步，消除人工转录错误，降低审计风险。</p>
+  <p><strong>人力节省</strong>：保守估计每日节省 2–3 小时重复性操作，旺季效果更显著。</p>
+  <p><strong>零迁移风险</strong>：保留 QuickBooks，通过 API 对接，会计侧工作流程不变。</p>
+  <p><strong>可扩展性</strong>：基础架构搭好后，新增自动化规则边际成本极低。</p>
+</div>
+
+<div class="footer">
+  MingziApp 内部技术方案 · 2026年3月
+</div>
+
+</body>
+</html>

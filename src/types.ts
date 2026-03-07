@@ -21,6 +21,7 @@ export interface Product {
   isAvailable: number
   stock?: number
   notes?: string | null
+  defaultSupplierId?: number | null
 }
 
 export interface OrderItem {
@@ -55,6 +56,8 @@ export interface Order {
   deliveryDate: string
   status: string
   tripNumber?: string | null
+  qbo_invoice_id?: string | null
+  payment_status?: string | null
   totalAmount?: number
   pendingReview?: number
   lastModifiedAt?: string | null
@@ -165,6 +168,7 @@ export interface ReceivingBatch {
   createdAt: string
   itemCount?: number
   totalQty?: number
+  qbo_bill_id?: string | null
   items?: ReceivingBatchItem[]
 }
 
@@ -196,6 +200,7 @@ export interface SupplierInvoice {
   totalAmount: number | null
   notes?: string | null
   status: 'pending' | 'confirmed' | 'partial'
+  qbo_bill_id?: string | null
   createdAt: string
   itemCount?: number
   autoConfirmedCount?: number

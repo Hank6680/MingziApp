@@ -64,7 +64,7 @@ router.get("/summary", async (req, res, next) => {
     )
 
     const rows = await dbAll(
-      `SELECT id, name, unit, warehouseType, price, isAvailable, stock, notes
+      `SELECT id, name, unit, warehouseType, price, isAvailable, stock, notes, defaultSupplierId
        FROM products ${whereClause}
        ORDER BY name ASC
        LIMIT ? OFFSET ?`,

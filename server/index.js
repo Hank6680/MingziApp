@@ -1,3 +1,4 @@
+require("dotenv").config()
 const express = require("express")
 const cors = require("cors")
 require("./db")
@@ -47,6 +48,7 @@ app.use("/api/backup", require("./routes/backup"))
 app.use("/api/dashboard", require("./routes/dashboard"))
 app.use("/api/system", require("./routes/system"))
 app.use("/api/reports", require("./routes/reports"))
+app.use("/api/qbo", require("./routes/qbo"))
 
 app.use((req, _res, next) => {
   next(httpError(404, `Route ${req.method} ${req.originalUrl} not found`, "NOT_FOUND"))

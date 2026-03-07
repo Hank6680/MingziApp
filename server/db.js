@@ -126,6 +126,35 @@ db.serialize(() => {
   ensureColumn("inventory_logs", "refOrderId", "INTEGER")
   ensureColumn("order_change_logs", "type", "TEXT")
   ensureColumn("order_change_logs", "readAt", "TEXT")
+  ensureColumn("orders", "qbo_invoice_id", "TEXT")
+  ensureColumn("orders", "payment_status", "TEXT", "'unpaid'")
+  ensureColumn("supplier_invoices", "qbo_bill_id", "TEXT")
+  ensureColumn("products", "defaultSupplierId", "INTEGER")
+  ensureColumn("receiving_batches", "qbo_bill_id", "TEXT")
+
+  // Migrate receiving_batches.supplierId to allow NULL (SQLite can't ALTER NOT NULL)
+  db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='receiving_batches'", (err, row) => {
+    if (!err && row && row.sql && /supplierId\s+INTEGER\s+NOT\s+NULL/i.test(row.sql)) {
+      db.serialize(() => {
+        db.run("PRAGMA foreign_keys = OFF")
+        db.run(`CREATE TABLE IF NOT EXISTS receiving_batches_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          batchNo TEXT NOT NULL UNIQUE,
+          supplierId INTEGER,
+          receivedDate TEXT NOT NULL,
+          notes TEXT,
+          reconcileStatus TEXT NOT NULL DEFAULT 'pending',
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+          qbo_bill_id TEXT,
+          FOREIGN KEY(supplierId) REFERENCES suppliers(id)
+        )`)
+        db.run(`INSERT INTO receiving_batches_new SELECT id, batchNo, supplierId, receivedDate, notes, reconcileStatus, createdAt, qbo_bill_id FROM receiving_batches`)
+        db.run(`DROP TABLE receiving_batches`)
+        db.run(`ALTER TABLE receiving_batches_new RENAME TO receiving_batches`)
+        db.run("PRAGMA foreign_keys = ON")
+      })
+    }
+  })
 
   // --- Receiving batches & supplier reconciliation tables ---
   db.run(`
@@ -230,6 +259,20 @@ db.serialize(() => {
       customerId INTEGER NOT NULL,
       tag TEXT NOT NULL,
       UNIQUE(customerId, tag)
+    )
+  `)
+
+  // QBO OAuth token storage (single row, id=1)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS qbo_tokens (
+      id INTEGER PRIMARY KEY,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      realm_id TEXT NOT NULL,
+      token_type TEXT NOT NULL DEFAULT 'bearer',
+      expires_at INTEGER NOT NULL,
+      refresh_token_expires_at INTEGER NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `)
 

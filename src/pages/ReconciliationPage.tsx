@@ -7,6 +7,7 @@ import {
   getSupplierInvoices,
   getSuppliers,
   importSupplierInvoice,
+  pushSupplierInvoiceToQbo,
   updateInvoiceItem,
 } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -46,6 +47,27 @@ export default function ReconciliationPage() {
   const [detailItems, setDetailItems] = useState<SupplierInvoiceItem[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [qboBillPushing, setQboBillPushing] = useState(false)
+
+  const handlePushBillToQbo = async () => {
+    if (!token || !selectedInvoice) return
+    if (selectedInvoice.status === 'pending')
+      return setMessage('请先确认账单再推送到 QuickBooks')
+    setQboBillPushing(true)
+    try {
+      const res = await pushSupplierInvoiceToQbo(selectedInvoice.id, token)
+      if (res.skipped) {
+        setMessage(`已推送过 QBO (Bill ID: ${res.qboBillId})`)
+      } else {
+        setSelectedInvoice(prev => prev ? { ...prev, qbo_bill_id: res.qboBillId ?? null } : prev)
+        setMessage(`已推送到 QuickBooks，Bill #${res.qboBillDocNumber}，金额 $${res.qboTotal?.toFixed(2)}`)
+      }
+    } catch (err) {
+      setMessage(`QBO 推送失败：${(err as Error).message}`)
+    } finally {
+      setQboBillPushing(false)
+    }
+  }
 
   // Batch selection for items
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set())
@@ -523,6 +545,15 @@ export default function ReconciliationPage() {
               </button>
               <button type="button" className="ghost" onClick={handleBatchConfirmSelected} disabled={confirming || selectedItemIds.size === 0}>
                 确认所选 ({selectedItemIds.size})
+              </button>
+              <button
+                type="button"
+                style={{ color: '#065f46', background: selectedInvoice.qbo_bill_id ? '#d1fae5' : undefined }}
+                onClick={handlePushBillToQbo}
+                disabled={qboBillPushing || selectedInvoice.status === 'pending'}
+                title={selectedInvoice.status === 'pending' ? '请先确认账单' : ''}
+              >
+                {qboBillPushing ? '推送中…' : selectedInvoice.qbo_bill_id ? 'QBO ✓ 已入账' : '推送到 QBO'}
               </button>
               <button type="button" className="ghost" onClick={() => setActiveTab('list')}>返回列表</button>
             </div>

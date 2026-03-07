@@ -931,6 +931,27 @@ router.patch("/items/:id/status", async (req, res, next) => {
   })
 })
 
+// ─── Payment status ──────────────────────────────────────────────────────────
+
+router.patch("/:id/payment", requireAdminOrManager, async (req, res, next) => {
+  const orderId = Number(req.params.id)
+  if (!Number.isFinite(orderId) || orderId <= 0)
+    return next(httpError(400, "Invalid order id", "VALIDATION_ERROR"))
+
+  const { payment_status } = req.body || {}
+  if (payment_status !== "paid" && payment_status !== "unpaid")
+    return next(httpError(400, "payment_status must be 'paid' or 'unpaid'", "VALIDATION_ERROR"))
+
+  try {
+    const result = await dbRun("UPDATE orders SET payment_status = ? WHERE id = ?", [payment_status, orderId])
+    if (result.changes === 0) return next(httpError(404, "Order not found", "NOT_FOUND"))
+    logAudit(req, { action: "order.payment", targetType: "order", targetId: orderId, details: { payment_status } })
+    return res.json({ ok: true, orderId, payment_status })
+  } catch (err) {
+    return next(err)
+  }
+})
+
 // ─── Batch create orders (staff) ──────────────────────────────────────────────
 
 const { requireStaffOrAdmin } = require("../middleware/auth")

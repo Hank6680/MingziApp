@@ -4,12 +4,17 @@ import {
   acknowledgeOrderChange,
   deleteOrder,
   deleteOrderItem,
+  downloadInvoicePdf,
   getCustomers,
   getOrderChangeLogs,
   getOrders,
   getPendingOrderChanges,
   getProducts,
+  pushOrderToQbo,
+  recordQboPayment,
+  syncQboPayments,
   updateOrderItemFields,
+  updateOrderPayment,
   updateOrderStatus,
   updateOrderTrip,
 } from '../api/client'
@@ -116,6 +121,84 @@ export default function OrdersPage() {
 
   // Delete order confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<{ orderId: number; customerName: string } | null>(null)
+
+  // QBO push
+  const [qboPushing, setQboPushing] = useState<Set<number>>(new Set())
+  const [qboSyncing, setQboSyncing] = useState(false)
+
+  const handleSyncQboPayments = async () => {
+    if (!token) return
+    setQboSyncing(true)
+    try {
+      const res = await syncQboPayments(token)
+      if (res.message) {
+        showToast('success', res.message)
+      } else {
+        showToast('success', `同步完成：${res.updated} 个订单已标记为已付款（共查询 ${res.total} 个）`)
+        if (res.updated > 0) setOrders(prev => prev.map(o => {
+          // Re-fetch will happen on next load; for now update locally if we pushed to QBO
+          return o
+        }))
+        // Reload orders to reflect updated payment_status
+        if (res.updated > 0) fetchOrders()
+      }
+    } catch (err) {
+      showToast('error', (err as Error).message)
+    } finally {
+      setQboSyncing(false)
+    }
+  }
+
+  const handleTogglePayment = async (order: Order) => {
+    if (!token) return
+    const newStatus = order.payment_status === 'paid' ? 'unpaid' : 'paid'
+    try {
+      await updateOrderPayment(order.id, newStatus, token)
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, payment_status: newStatus } : o))
+      showToast('success', newStatus === 'paid' ? `订单 #${order.id} 已标记为已付款` : `订单 #${order.id} 已标记为未付款`)
+      // If marking paid and order has QBO invoice, also record payment in QBO
+      if (newStatus === 'paid' && order.qbo_invoice_id) {
+        try {
+          const qboRes = await recordQboPayment(order.id, token)
+          if (qboRes.skipped) {
+            showToast('success', 'QBO Invoice 已全额付款，无需重复记录')
+          } else {
+            showToast('success', `已在 QuickBooks 记录支票付款 (Payment #${qboRes.qboPaymentId})`)
+          }
+        } catch (qboErr) {
+          showToast('error', `MingziApp 已更新，但 QBO 同步失败：${(qboErr as Error).message}`)
+        }
+      }
+    } catch (err) {
+      showToast('error', (err as Error).message)
+    }
+  }
+
+  const handlePushToQbo = async (orderId: number) => {
+    if (!token) return
+    const existingInvoiceId = orders.find(o => o.id === orderId)?.qbo_invoice_id
+    if (existingInvoiceId) {
+      if (!window.confirm(`该订单已推送过 QuickBooks (Invoice ID: ${existingInvoiceId})，确定要重新推送吗？（会在 QBO 中创建新发票）`)) return
+    }
+    setQboPushing(prev => new Set(prev).add(orderId))
+    try {
+      const res = await pushOrderToQbo(orderId, token)
+      showToast('success', `已推送到 QuickBooks，Invoice #${res.qboInvoiceDocNumber}`)
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, qbo_invoice_id: res.qboInvoiceId } : o))
+      // Download PDF
+      const blob = await downloadInvoicePdf(res.qboInvoiceId, token)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invoice-${res.qboInvoiceDocNumber}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showToast('error', (err as Error).message)
+    } finally {
+      setQboPushing(prev => { const s = new Set(prev); s.delete(orderId); return s })
+    }
+  }
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager'
 
@@ -593,7 +676,15 @@ export default function OrdersPage() {
           <h1>订单列表</h1>
           <p>查看和管理所有订单（共 {orders.length} 单{hasActiveFilters ? `，筛选后 ${filteredOrders.length} 单` : ''}）</p>
         </div>
-        <button onClick={fetchOrders}>刷新</button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {isAdmin && (
+            <button type="button" className="ghost" onClick={handleSyncQboPayments} disabled={qboSyncing}
+              title="从 QBO 同步付款状态">
+              {qboSyncing ? '同步中…' : '同步 QBO 付款'}
+            </button>
+          )}
+          <button onClick={fetchOrders}>刷新</button>
+        </div>
       </div>
       {loading && <p>加载中…</p>}
       {error && <p className="error-text">{error}</p>}
@@ -882,6 +973,13 @@ export default function OrdersPage() {
                   <div>
                     <strong>订单 #{order.id}</strong>
                     {order.pendingReview ? <span className="badge warning">待确认变更</span> : null}
+                    {order.qbo_invoice_id ? <span className="badge" style={{ background: '#d1fae5', color: '#065f46', marginLeft: '0.3rem' }}>QBO ✓</span> : null}
+                    {order.payment_status === 'paid'
+                      ? <span className="badge" style={{ background: '#dcfce7', color: '#166534', marginLeft: '0.3rem' }}>已付款</span>
+                      : (order.status === 'shipped' || order.status === 'completed')
+                        ? <span className="badge" style={{ background: '#fef9c3', color: '#854d0e', marginLeft: '0.3rem' }}>未付款</span>
+                        : null
+                    }
                     <p>客户: {getCustomerDisplay(order)}</p>
                     <p>送达日期: {formatDeliveryDate(order.deliveryDate)}</p>
                     {order.lastModifiedAt && <small>最近变更：{new Date(order.lastModifiedAt).toLocaleString()}</small>}
@@ -954,6 +1052,21 @@ export default function OrdersPage() {
                                 onClick={() => { toggleOrderLogs(order.id); setOpenMenuId(null) }}
                               >
                                 {orderLogsVisible[order.id] ? '隐藏变更日志' : '查看变更日志'}
+                              </button>
+                              <button
+                                type="button" className="ghost"
+                                style={{ border: 'none', borderRadius: 0, padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.88rem', color: order.payment_status === 'paid' ? '#6b7280' : '#1d4ed8' }}
+                                onClick={() => { handleTogglePayment(order); setOpenMenuId(null) }}
+                              >
+                                {order.payment_status === 'paid' ? '标记为未付款' : '标记为已付款'}
+                              </button>
+                              <button
+                                type="button" className="ghost"
+                                style={{ border: 'none', borderRadius: 0, padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.88rem', color: '#047857' }}
+                                disabled={qboPushing.has(order.id)}
+                                onClick={() => { handlePushToQbo(order.id); setOpenMenuId(null) }}
+                              >
+                                {qboPushing.has(order.id) ? '推送中…' : order.qbo_invoice_id ? '重新推送 QBO' : '推送到 QuickBooks'}
                               </button>
                               {!['shipped', 'completed', 'cancelled'].includes(order.status) && (
                                 <button
