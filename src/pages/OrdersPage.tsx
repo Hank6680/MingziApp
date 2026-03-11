@@ -671,12 +671,12 @@ export default function OrdersPage() {
 
   return (
     <div className="page-content">
-      <div className="orders-header">
-        <div className="page-header">
+      <div className="page-banner">
+        <div className="page-banner-left">
           <h1>订单列表</h1>
           <p>查看和管理所有订单（共 {orders.length} 单{hasActiveFilters ? `，筛选后 ${filteredOrders.length} 单` : ''}）</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="page-banner-actions">
           {isAdmin && (
             <button type="button" className="ghost" onClick={handleSyncQboPayments} disabled={qboSyncing}
               title="从 QBO 同步付款状态">

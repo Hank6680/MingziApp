@@ -2,72 +2,96 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
+import {
+  LayoutDashboard, ShoppingCart, Package, Users, Truck,
+  ClipboardList, Warehouse, FileText, Settings, Leaf,
+  LogOut, Menu, X, UserCircle,
+} from 'lucide-react'
+
+const NAV_ITEMS = [
+  { to: '/dashboard',      label: '仪表盘',    icon: LayoutDashboard, roles: null,                              showCart: false },
+  { to: '/staff-ordering', label: '代客下单',   icon: ShoppingCart,    roles: ['staff', 'admin', 'manager'],    showCart: true  },
+  { to: '/products',       label: '商品下单',   icon: Package,         roles: ['admin', 'manager'],             showCart: false },
+  { to: '/orders',         label: '订单列表',   icon: FileText,        roles: null,                              showCart: false },
+  { to: '/customers',      label: '客户管理',   icon: Users,           roles: ['admin', 'manager'],             showCart: false },
+  { to: '/suppliers',      label: '供应商',     icon: Truck,           roles: ['admin', 'manager'],             showCart: false },
+  { to: '/picking',        label: '拣货任务',   icon: ClipboardList,   roles: ['admin', 'manager'],             showCart: false },
+  { to: '/inventory',      label: '库存管理',   icon: Warehouse,       roles: ['admin', 'manager'],             showCart: false },
+  { to: '/reconciliation', label: '供应商对账',  icon: FileText,        roles: ['admin'],                        showCart: false },
+  { to: '/settings',       label: '系统设置',   icon: Settings,        roles: ['admin'],                        showCart: false },
+] as const
 
 export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { totalItems } = useCart()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  if (!user) return null
 
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  const closeMenu = () => setMenuOpen(false)
+  const visibleItems = NAV_ITEMS.filter(
+    item => !item.roles || item.roles.includes(user.role as never)
+  )
+
+  const closeMobile = () => setMobileOpen(false)
 
   return (
-    <header className="app-header">
-      <div className="brand">Mingzi Supply</div>
-
-      <button
-        className="hamburger-btn"
-        onClick={() => setMenuOpen((prev) => !prev)}
-        aria-label="Toggle menu"
-      >
-        <span />
-        <span />
-        <span />
+    <>
+      {/* Mobile hamburger - only visible on small screens via CSS */}
+      <button className="sidebar-hamburger" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+        <Menu size={20} />
       </button>
 
-      <nav className={menuOpen ? 'nav-links-open' : 'nav-links'}>
-        {user && (
-          <>
-            <NavLink to="/dashboard" onClick={closeMenu}>仪表盘</NavLink>
-            {(user.role === 'staff' || user.role === 'admin' || user.role === 'manager') && (
-              <NavLink to="/staff-ordering" onClick={closeMenu}>
-                代客下单
-                {totalItems > 0 && <span className="nav-cart-badge">{totalItems}</span>}
-              </NavLink>
-            )}
-            {user.role !== 'staff' && <NavLink to="/products" onClick={closeMenu}>商品下单</NavLink>}
-            <NavLink to="/orders" onClick={closeMenu}>订单列表</NavLink>
-            {(user.role === 'admin' || user.role === 'manager') && (
-              <>
-                <NavLink to="/customers" onClick={closeMenu}>客户管理</NavLink>
-                <NavLink to="/suppliers" onClick={closeMenu}>供应商</NavLink>
-                <NavLink to="/picking" onClick={closeMenu}>拣货任务</NavLink>
-                <NavLink to="/inventory" onClick={closeMenu}>库存管理</NavLink>
-              </>
-            )}
-            {user.role === 'admin' && (
-              <>
-                <NavLink to="/reconciliation" onClick={closeMenu}>供应商对账</NavLink>
-                <NavLink to="/settings" onClick={closeMenu}>系统设置</NavLink>
-              </>
-            )}
-          </>
-        )}
-      </nav>
+      {/* Mobile overlay */}
+      {mobileOpen && <div className="sidebar-overlay" onClick={closeMobile} />}
 
-      {user ? (
-        <div className="user-box">
-          <span>{user.username}</span>
-          <button onClick={handleLogout}>退出</button>
+      <aside className={`app-sidebar${mobileOpen ? ' sidebar-open' : ''}`}>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-icon">
+            <Leaf size={18} />
+          </div>
+          <span>Mingzi Supply</span>
+          <button className="sidebar-close-btn" onClick={closeMobile} aria-label="Close menu">
+            <X size={16} />
+          </button>
         </div>
-      ) : (
-        <NavLink to="/login">登录</NavLink>
-      )}
-    </header>
+
+        <nav className="sidebar-nav">
+          {visibleItems.map(({ to, label, icon: Icon, showCart }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={closeMobile}
+              className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+              {showCart && totalItems > 0 && (
+                <span className="nav-cart-badge">{totalItems}</span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <UserCircle size={20} />
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-name">{user.username}</span>
+              <span className="sidebar-user-role">{user.role}</span>
+            </div>
+          </div>
+          <button className="sidebar-logout" onClick={handleLogout}>
+            <LogOut size={16} />
+            <span>退出</span>
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }

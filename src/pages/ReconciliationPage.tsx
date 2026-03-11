@@ -589,9 +589,11 @@ export default function ReconciliationPage() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1>供应商对账</h1>
-        <p>上传供应商账单 Excel，自动匹配收货批次进行对账</p>
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>供应商对账</h1>
+          <p>上传供应商账单 Excel，自动匹配收货批次进行对账</p>
+        </div>
       </div>
       {message && <p className="hint">{message}</p>}
 

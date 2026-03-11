@@ -110,25 +110,26 @@ export default function SuppliersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">供应商管理</h1>
-            <p className="mt-2 text-sm text-gray-600">管理所有供应商信息和入库记录</p>
-          </div>
+    <div className="page-content">
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>供应商管理</h1>
+          <p>管理所有供应商信息和入库记录</p>
+        </div>
+        <div className="page-banner-actions">
           <button
             onClick={() => {
               setShowAddForm(true)
               setEditingId(null)
               setForm({ name: '', contact: '', phone: '', notes: '' })
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="btn btn-primary"
           >
             ➕ 添加供应商
           </button>
         </div>
+      </div>
+      <div>
 
         {/* Message */}
         {message && (
@@ -320,3 +321,4 @@ export default function SuppliersPage() {
     </div>
   )
 }
+

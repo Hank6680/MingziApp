@@ -358,9 +358,11 @@ export default function ProductsPage() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1>商品列表</h1>
-        <p>浏览商品并下单</p>
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>商品列表</h1>
+          <p>浏览商品并下单</p>
+        </div>
       </div>
       <form className="filters" onSubmit={handleSearch}>
         <SearchableFilter names={productNames} value={query} onChange={setQuery} placeholder="搜索商品名..." />

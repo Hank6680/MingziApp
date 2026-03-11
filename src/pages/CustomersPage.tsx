@@ -252,33 +252,29 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">客户管理</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              共 {customers.length} 个客户{filteredCustomers.length !== customers.length && `，当前筛选 ${filteredCustomers.length} 个`}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={exportCsv}
-              disabled={filteredCustomers.length === 0}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors text-sm font-medium"
-            >
-              导出 CSV
-            </button>
-            <button
-              onClick={openAddModal}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              + 添加客户
-            </button>
-          </div>
+    <div className="page-content">
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>客户管理</h1>
+          <p>共 {customers.length} 个客户{filteredCustomers.length !== customers.length && `，当前筛选 ${filteredCustomers.length} 个`}</p>
         </div>
+        <div className="page-banner-actions">
+          <button
+            onClick={exportCsv}
+            disabled={filteredCustomers.length === 0}
+            className="btn btn-ghost"
+          >
+            导出 CSV
+          </button>
+          <button
+            onClick={openAddModal}
+            className="btn btn-primary"
+          >
+            + 添加客户
+          </button>
+        </div>
+      </div>
+      <div>
 
         {/* Search & Tag Filter */}
         <div className="mb-4 flex flex-wrap gap-3 items-start">
@@ -568,6 +564,7 @@ export default function CustomersPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

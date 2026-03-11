@@ -155,9 +155,11 @@ export default function PickingPage() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1>拣货任务</h1>
-        <p>按车次和仓储类型拣货</p>
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>拣货任务</h1>
+          <p>按车次和仓储类型拣货</p>
+        </div>
       </div>
 
       {pendingOrders.length > 0 && (

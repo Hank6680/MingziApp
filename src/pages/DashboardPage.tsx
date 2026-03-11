@@ -226,10 +226,11 @@ function StatCard({ title, value, sub, color, link }: StatCardProps) {
     yellow: '#d97706',
     purple: '#7c3aed',
   }
+  const hex = colorMap[color]
   const content = (
-    <div className="dash-card">
+    <div className="dash-card" style={{ borderLeftColor: hex }}>
       <p className="dash-card-title">{title}</p>
-      <p className="dash-card-value" style={{ color: colorMap[color] }}>{value}</p>
+      <p className="dash-card-value" style={{ color: hex }}>{value}</p>
       <p className="dash-card-sub">{sub}</p>
     </div>
   )

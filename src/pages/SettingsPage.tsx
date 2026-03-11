@@ -73,9 +73,11 @@ export default function SettingsPage() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1>系统设置</h1>
-        <p>数据库信息、价格历史、操作日志</p>
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>系统设置</h1>
+          <p>数据库信息、价格历史、操作日志</p>
+        </div>
       </div>
       {message && <p className="hint">{message}</p>}
 

@@ -829,9 +829,11 @@ export default function StaffOrderingPage() {
 
   return (
     <div className="page-content" style={isMobile ? {} : { maxWidth: 1400 }}>
-      <div className="page-header">
-        <h1>代客下单</h1>
-        <p>选择客户，添加商品，统一提交订单</p>
+      <div className="page-banner">
+        <div className="page-banner-left">
+          <h1>代客下单</h1>
+          <p>选择客户，添加商品，统一提交订单</p>
+        </div>
       </div>
 
       {message && (
